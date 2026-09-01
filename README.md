@@ -132,6 +132,20 @@ catch error:
   print("Division by zero!")
 ```
 
+### Importing
+
+main.tekst
+```tekst
+from hello import greet
+
+greet()
+```
+hello.tekst
+```tekst
+fn greet():
+  print("Hello")
+```
+
 ### Built-in Functions
 
 ```tekst
