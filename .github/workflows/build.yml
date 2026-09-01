@@ -1,4 +1,4 @@
-name: Build Tekst Compiler
+name: Build Tekst Multi-Platform
 
 on:
   push:
@@ -12,20 +12,34 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up GCC/Clang (Linux)
+    - name: Setup CMake
+      uses: jwlawrence/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.16.x'
+
+    - name: Build Linux Dependencies
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake
+        sudo apt-get install -y build-essential
 
     - name: Configure CMake
       run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-    - name: Build Source
+    - name: Build Binary
       run: cmake --build build --config Release
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Tekst-${{ matrix.os }}
+        path: |
+          build/tekst
+          build/Release/tekst.exe
+        if-no-files-found: ignore
