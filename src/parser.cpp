@@ -2,211 +2,350 @@
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
+#include <fstream>
+#include <functional>
 
-std::string NumberLiteral::toString() const { return std::to_string(value); }
-std::string BooleanLiteral::toString() const { return value ? "True" : "False"; }
-std::string StringLiteral::toString() const { return "\"" + value + "\""; }
-std::string Identifier::toString() const { return name; }
-std::string BinaryOp::toString() const { return "(" + left->toString() + " " + op + " " + right->toString() + ")"; }
+std::string NumberLiteral::toString() const {
+    return std::to_string(value);
+}
+
+std::string BooleanLiteral::toString() const {
+    return value ? "True" : "False";
+}
+
+std::string StringLiteral::toString() const {
+    return "\"" + value + "\"";
+}
+
+std::string Identifier::toString() const {
+    return name;
+}
+
+std::string BinaryOp::toString() const {
+    return "(" + left->toString() + " " + op + " " + right->toString() + ")";
+}
+
 std::string CallExpression::toString() const {
     std::string s = callee + "(";
+
     for (size_t i = 0; i < args.size(); ++i) {
         if (i > 0) s += ", ";
         s += args[i]->toString();
     }
+
     s += ")";
     return s;
 }
-std::string AttributeAccess::toString() const { return object->toString() + "." + attribute; }
-std::string IndexAccess::toString() const { return object->toString() + "[" + index->toString() + "]"; }
-std::string Assignment::toString() const { return var + " = " + expr->toString(); }
+
+std::string AttributeAccess::toString() const {
+    return object->toString() + "." + attribute;
+}
+
+std::string IndexAccess::toString() const {
+    return object->toString() + "[" + index->toString() + "]";
+}
+
+std::string Assignment::toString() const {
+    return var + " = " + expr->toString();
+}
+
 std::string ListLiteral::toString() const {
     std::string s = "[";
+
     for (size_t i = 0; i < elements.size(); ++i) {
         if (i > 0) s += ", ";
         s += elements[i]->toString();
     }
+
     return s + "]";
 }
+
 std::string DictLiteral::toString() const {
     std::string s = "{";
+
     for (size_t i = 0; i < entries.size(); ++i) {
         if (i > 0) s += ", ";
-        s += entries[i].first->toString() + ": " + entries[i].second->toString();
+
+        s += entries[i].first->toString();
+        s += ": ";
+        s += entries[i].second->toString();
     }
+
     return s + "}";
 }
-std::string PrintStatement::toString() const { return "print(" + expr->toString() + ")"; }
-std::string ReturnStatement::toString() const { return expr ? ("return " + expr->toString()) : "return"; }
+
+std::string PrintStatement::toString() const {
+    return "print(" + expr->toString() + ")";
+}
+
+std::string ReturnStatement::toString() const {
+    return expr ? "return " + expr->toString() : "return";
+}
+
 std::string FunctionDef::toString() const {
     std::string s = "def " + name + "(";
-    for (size_t i = 0; i < parameters.size(); ++i) { if (i > 0) s += ", "; s += parameters[i]; }
+
+    for (size_t i = 0; i < parameters.size(); ++i) {
+        if (i > 0) s += ", ";
+        s += parameters[i];
+    }
+
     s += "):\n";
-    for (const auto& stmt : body) s += "  " + stmt->toString() + "\n";
+
+    for (const auto& stmt : body) {
+        s += "  " + stmt->toString() + "\n";
+    }
+
     return s;
 }
+
 std::string ClassDef::toString() const {
     std::string s = "class " + name;
-    if (!baseClass.empty()) s += " extends " + baseClass;
+
+    if (!baseClass.empty()) {
+        s += " extends " + baseClass;
+    }
+
     s += ":\n";
-    for (const auto& stmt : body) s += "  " + stmt->toString() + "\n";
+
+    for (const auto& stmt : body) {
+        s += "  " + stmt->toString() + "\n";
+    }
+
     return s;
 }
+
 std::string ForStatement::toString() const {
     std::string s = "for " + var + " in " + iterable->toString() + ":\n";
-    for (const auto& stmt : body) s += "  " + stmt->toString() + "\n";
+
+    for (const auto& stmt : body) {
+        s += "  " + stmt->toString() + "\n";
+    }
+
     return s;
 }
+
 std::string TryStatement::toString() const {
     std::string s = "try:\n";
-    for (const auto& stmt : tryBody) s += "  " + stmt->toString() + "\n";
+
+    for (const auto& stmt : tryBody) {
+        s += "  " + stmt->toString() + "\n";
+    }
+
     s += "catch " + exceptionName + ":\n";
-    for (const auto& stmt : catchBody) s += "  " + stmt->toString() + "\n";
+
+    for (const auto& stmt : catchBody) {
+        s += "  " + stmt->toString() + "\n";
+    }
+
     return s;
 }
+
 std::string IfStatement::toString() const {
-    std::string s = "if " + condition->toString() + " :\n";
-    for (const auto& stmt : body) s += "  " + stmt->toString() + "\n";
+    std::string s = "if " + condition->toString() + ":\n";
+
+    for (const auto& stmt : body) {
+        s += "  " + stmt->toString() + "\n";
+    }
+
     if (!elseBody.empty()) {
         s += "else:\n";
-        for (const auto& stmt : elseBody) s += "  " + stmt->toString() + "\n";
+
+        for (const auto& stmt : elseBody) {
+            s += "  " + stmt->toString() + "\n";
+        }
     }
+
     return s;
 }
+
 std::string WhileStatement::toString() const {
     std::string s = "while " + condition->toString() + ":\n";
-    for (const auto& stmt : body) s += "  " + stmt->toString() + "\n";
+
+    for (const auto& stmt : body) {
+        s += "  " + stmt->toString() + "\n";
+    }
+
     return s;
 }
+
 std::string Program::toString() const {
     std::string result = "Program:\n";
-    for (const auto& stmt : statements) result += "  " + stmt->toString() + "\n";
+
+    for (const auto& stmt : statements) {
+        result += "  " + stmt->toString() + "\n";
+    }
+
     return result;
 }
 
 static std::string valueToString(const RuntimeValue& value) {
-    if (const auto* v = std::get_if<int>(&value)) return std::to_string(*v);
-    if (const auto* v = std::get_if<bool>(&value)) return *v ? "True" : "False";
-    if (const auto* v = std::get_if<std::string>(&value)) return *v;
-    if (const auto* v = std::get_if<double>(&value)) return std::to_string(*v);
+    if (const auto* v = std::get_if<int>(&value)) {
+        return std::to_string(*v);
+    }
+
+    if (const auto* v = std::get_if<bool>(&value)) {
+        return *v ? "True" : "False";
+    }
+
+    if (const auto* v = std::get_if<std::string>(&value)) {
+        return *v;
+    }
+
+    if (const auto* v = std::get_if<double>(&value)) {
+        return std::to_string(*v);
+    }
+
     if (const auto* v = std::get_if<std::shared_ptr<RuntimeFunction>>(&value)) {
         return "<function " + (*v)->name + ">";
     }
+
     if (const auto* v = std::get_if<std::shared_ptr<RuntimeObject>>(&value)) {
         if ((*v)->className == "__list__") {
             std::string s = "[";
             bool first = true;
+
             for (size_t i = 0; i < 1000; ++i) {
-                auto key = std::to_string(i);
-                auto it = (*v)->fields.find(key);
-                if (it == (*v)->fields.end()) break;
-                if (!first) s += ", ";
+                auto it = (*v)->fields.find(std::to_string(i));
+
+                if (it == (*v)->fields.end()) {
+                    break;
+                }
+
+                if (!first) {
+                    s += ", ";
+                }
+
                 s += valueToString(it->second);
                 first = false;
             }
-            s += "]";
-            return s;
+
+            return s + "]";
         }
+
         if ((*v)->className == "__dict__") {
             std::string s = "{";
             bool first = true;
+
             for (const auto& [k, val] : (*v)->fields) {
-                if (k != "__size__" && k != "__type__") {
-                    if (!first) s += ", ";
-                    s += k + ": " + valueToString(val);
-                    first = false;
+                if (k == "__size__" || k == "__type__") {
+                    continue;
                 }
+
+                if (!first) {
+                    s += ", ";
+                }
+
+                s += k + ": " + valueToString(val);
+                first = false;
             }
-            s += "}";
-            return s;
+
+            return s + "}";
         }
+
         return "<" + (*v)->className + " object>";
     }
+
     return "<unknown>";
 }
 
 static int asInt(const RuntimeValue& value) {
-    if (const auto* v = std::get_if<int>(&value)) return *v;
-    if (const auto* v = std::get_if<bool>(&value)) return *v ? 1 : 0;
+    if (const auto* v = std::get_if<int>(&value)) {
+        return *v;
+    }
+
+    if (const auto* v = std::get_if<bool>(&value)) {
+        return *v ? 1 : 0;
+    }
+
     throw std::runtime_error("Expected numeric value");
 }
 
-static std::vector<RuntimeValue> asList(const RuntimeValue& value) {
-    if (const auto* v = std::get_if<std::shared_ptr<RuntimeObject>>(&value)) {
-        if ((*v)->className == "__list__") {
-            std::vector<RuntimeValue> result;
-            for (size_t i = 0; i < 1000; ++i) {
-                auto key = std::to_string(i);
-                auto it = (*v)->fields.find(key);
-                if (it == (*v)->fields.end()) break;
-                result.push_back(it->second);
-            }
-            return result;
-        }
-    }
-    throw std::runtime_error("Expected list value");
-}
-
-static std::map<std::string, RuntimeValue> asDict(const RuntimeValue& value) {
-    if (const auto* v = std::get_if<std::shared_ptr<RuntimeObject>>(&value)) {
-        if ((*v)->className == "__dict__") {
-            std::map<std::string, RuntimeValue> result;
-            for (const auto& [k, val] : (*v)->fields) {
-                if (k != "__size__" && k != "__type__") {
-                    result[k] = val;
-                }
-            }
-            return result;
-        }
-    }
-    throw std::runtime_error("Expected dictionary value");
-}
-
 static bool asBool(const RuntimeValue& value) {
-    if (const auto* v = std::get_if<int>(&value)) return *v != 0;
-    if (const auto* v = std::get_if<bool>(&value)) return *v;
-    if (const auto* v = std::get_if<std::string>(&value)) return !v->empty();
+    if (const auto* v = std::get_if<int>(&value)) {
+        return *v != 0;
+    }
+
+    if (const auto* v = std::get_if<bool>(&value)) {
+        return *v;
+    }
+
+    if (const auto* v = std::get_if<std::string>(&value)) {
+        return !v->empty();
+    }
+
     return true;
 }
 
-Parser::Parser(const std::vector<Token>& t) : tokens(t), pos(0) {}
+Parser::Parser(const std::vector<Token>& t)
+    : tokens(t), pos(0) {}
 
 Token Parser::current() const {
-    if (pos < tokens.size()) return tokens[pos];
-    return Token{TokenType::EOF_TOKEN, ""};
+    if (pos < tokens.size()) {
+        return tokens[pos];
+    }
+
+    return {TokenType::EOF_TOKEN, ""};
 }
 
 Token Parser::peek(int offset) const {
-    if (pos + offset < tokens.size()) return tokens[pos + offset];
-    return Token{TokenType::EOF_TOKEN, ""};
+    if (pos + offset < tokens.size()) {
+        return tokens[pos + offset];
+    }
+
+    return {TokenType::EOF_TOKEN, ""};
 }
 
-void Parser::advance() { if (pos < tokens.size()) pos++; }
+void Parser::advance() {
+    if (pos < tokens.size()) {
+        ++pos;
+    }
+}
 
 bool Parser::match(TokenType type) {
-    if (check(type)) { advance(); return true; }
+    if (check(type)) {
+        advance();
+        return true;
+    }
+
     return false;
 }
 
-bool Parser::check(TokenType type) const { return current().type == type; }
+bool Parser::check(TokenType type) const {
+    return current().type == type;
+}
 
 bool Parser::checkKeyword(const std::string& name) const {
-    return current().type == TokenType::KEYWORD && current().value == name;
+    return current().type == TokenType::KEYWORD &&
+           current().value == name;
 }
 
 void Parser::consumeNewlines() {
-    while (check(TokenType::NEWLINE)) advance();
+    while (check(TokenType::NEWLINE)) {
+        advance();
+    }
 }
 
 std::shared_ptr<Program> Parser::parse() {
     auto program = std::make_shared<Program>();
+
     consumeNewlines();
+
     while (!check(TokenType::EOF_TOKEN)) {
-        if (check(TokenType::NEWLINE)) { advance(); continue; }
+        if (check(TokenType::NEWLINE)) {
+            advance();
+            continue;
+        }
+
         auto stmt = parseStatement();
-        if (stmt) program->statements.push_back(stmt);
+
+        if (stmt) {
+            program->statements.push_back(stmt);
+        }
+
         consumeNewlines();
     }
+
     return program;
 }
 
@@ -222,259 +361,525 @@ std::shared_ptr<ASTNode> Parser::parseStatement() {
     if (checkKeyword("return")) return parseReturnStatement();
     if (checkKeyword("let")) return parseDeclaration();
 
-    if (!check(TokenType::NAME)) return parseAssignment();
+    if (!check(TokenType::NAME)) {
+        return parseAssignment();
+    }
 
-    if (peek().type == TokenType::LPAREN) return parseCallStatement();
-    if (peek().type == TokenType::DOT && peek(2).type == TokenType::NAME && peek(3).type == TokenType::LPAREN) return parseCallStatement();
-    if (peek().type == TokenType::NAME && peek(2).type != TokenType::ASSIGN) return parseDeclaration();
-    if (peek().type == TokenType::ASSIGN) return parseAssignment();
-    if (peek().type == TokenType::DOT) return parseAssignment();
+    if (peek().type == TokenType::LPAREN) {
+        return parseCallStatement();
+    }
+
+    if (peek().type == TokenType::DOT &&
+        peek(2).type == TokenType::NAME &&
+        peek(3).type == TokenType::LPAREN) {
+        return parseCallStatement();
+    }
+
+    if (peek().type == TokenType::NAME &&
+        peek(2).type != TokenType::ASSIGN) {
+        return parseDeclaration();
+    }
+
+    if (peek().type == TokenType::ASSIGN) {
+        return parseAssignment();
+    }
+
+    if (peek().type == TokenType::DOT) {
+        return parseAssignment();
+    }
+
     return parseAssignment();
 }
 
 std::vector<std::shared_ptr<ASTNode>> Parser::parseBlock() {
     std::vector<std::shared_ptr<ASTNode>> block;
+
     consumeNewlines();
+
     if (match(TokenType::INDENT)) {
-        while (!check(TokenType::EOF_TOKEN) && !check(TokenType::DEDENT)) {
-            if (check(TokenType::NEWLINE)) { advance(); continue; }
+        while (!check(TokenType::EOF_TOKEN) &&
+               !check(TokenType::DEDENT)) {
+            if (check(TokenType::NEWLINE)) {
+                advance();
+                continue;
+            }
+
             block.push_back(parseStatement());
             consumeNewlines();
         }
+
         if (check(TokenType::DEDENT)) {
             advance();
         }
+
         return block;
     }
 
-    while (!check(TokenType::EOF_TOKEN) && !checkKeyword("else") && !check(TokenType::DEDENT)) {
-        if (check(TokenType::NEWLINE)) { advance(); continue; }
+    while (!check(TokenType::EOF_TOKEN) &&
+           !checkKeyword("else") &&
+           !check(TokenType::DEDENT)) {
+        if (check(TokenType::NEWLINE)) {
+            advance();
+            continue;
+        }
+
         block.push_back(parseStatement());
         consumeNewlines();
     }
+
     return block;
 }
 
 std::shared_ptr<ASTNode> Parser::parseIfStatement() {
     advance();
+
     auto cond = parseExpression();
-    if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after if condition");
+
+    if (!match(TokenType::COLON)) {
+        throw std::runtime_error("Expected ':' after if condition");
+    }
+
     auto body = parseBlock();
     std::vector<std::shared_ptr<ASTNode>> elseBody;
+
     while (checkKeyword("elif")) {
         advance();
+
         auto elifCond = parseExpression();
-        if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after elif condition");
+
+        if (!match(TokenType::COLON)) {
+            throw std::runtime_error("Expected ':' after elif condition");
+        }
+
         auto elifBody = parseBlock();
-        auto elifStmt = std::make_shared<IfStatement>(elifCond, elifBody, std::vector<std::shared_ptr<ASTNode>>{});
-        elseBody.insert(elseBody.end(), elifStmt);
+
+        auto elifStmt = std::make_shared<IfStatement>(
+            elifCond,
+            elifBody,
+            std::vector<std::shared_ptr<ASTNode>>{}
+        );
+
+        elseBody.push_back(elifStmt);
     }
+
     if (checkKeyword("else")) {
         advance();
-        if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after else");
+
+        if (!match(TokenType::COLON)) {
+            throw std::runtime_error("Expected ':' after else");
+        }
+
         elseBody = parseBlock();
     }
-    return std::make_shared<IfStatement>(cond, body, elseBody);
+
+    return std::make_shared<IfStatement>(
+        cond,
+        body,
+        elseBody
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parseWhileStatement() {
     advance();
+
     auto cond = parseExpression();
-    if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after while condition");
-    auto body = parseBlock();
-    return std::make_shared<WhileStatement>(cond, body);
+
+    if (!match(TokenType::COLON)) {
+        throw std::runtime_error("Expected ':' after while condition");
+    }
+
+    return std::make_shared<WhileStatement>(
+        cond,
+        parseBlock()
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parsePrintStatement() {
     advance();
-    if (!match(TokenType::LPAREN)) throw std::runtime_error("Expected '(' after print");
+
+    if (!match(TokenType::LPAREN)) {
+        throw std::runtime_error("Expected '(' after print");
+    }
+
     auto expr = parseExpression();
-    if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after print expression");
+
+    if (!match(TokenType::RPAREN)) {
+        throw std::runtime_error("Expected ')' after print expression");
+    }
+
     return std::make_shared<PrintStatement>(expr);
 }
 
 std::shared_ptr<ASTNode> Parser::parseFunctionDef() {
     advance();
-    if (!check(TokenType::NAME)) throw std::runtime_error("Expected function name");
+
+    if (!check(TokenType::NAME)) {
+        throw std::runtime_error("Expected function name");
+    }
+
     std::string name = current().value;
     advance();
-    if (!match(TokenType::LPAREN)) throw std::runtime_error("Expected '(' after function name");
+
+    if (!match(TokenType::LPAREN)) {
+        throw std::runtime_error("Expected '(' after function name");
+    }
+
     std::vector<std::string> params;
-    std::vector<std::shared_ptr<Expression>> defaultArgs;
+    std::vector<std::shared_ptr<Expression>> defaults;
+
     if (!check(TokenType::RPAREN)) {
         do {
-            if (!check(TokenType::NAME)) throw std::runtime_error("Expected parameter name");
-            std::string paramName = current().value;
+            if (!check(TokenType::NAME)) {
+                throw std::runtime_error("Expected parameter name");
+            }
+
+            std::string param = current().value;
             advance();
-            params.push_back(paramName);
+
+            params.push_back(param);
+
             if (match(TokenType::ASSIGN)) {
-                defaultArgs.push_back(parseExpression());
+                defaults.push_back(parseExpression());
             }
         } while (match(TokenType::COMMA));
     }
-    if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after parameter list");
-    if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after function signature");
-    auto body = parseBlock();
-    return std::make_shared<FunctionDef>(name, params, defaultArgs, body);
+
+    if (!match(TokenType::RPAREN)) {
+        throw std::runtime_error("Expected ')' after parameter list");
+    }
+
+    if (!match(TokenType::COLON)) {
+        throw std::runtime_error("Expected ':' after function signature");
+    }
+
+    return std::make_shared<FunctionDef>(
+        name,
+        params,
+        defaults,
+        parseBlock()
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parseClassDef() {
     advance();
-    if (!check(TokenType::NAME)) throw std::runtime_error("Expected class name");
+
+    if (!check(TokenType::NAME)) {
+        throw std::runtime_error("Expected class name");
+    }
+
     std::string name = current().value;
     advance();
-    std::string baseClass = "";
+
+    std::string baseClass;
+
     if (checkKeyword("extends")) {
         advance();
-        if (!check(TokenType::NAME)) throw std::runtime_error("Expected base class name after extends");
+
+        if (!check(TokenType::NAME)) {
+            throw std::runtime_error("Expected base class name");
+        }
+
         baseClass = current().value;
         advance();
     }
-    if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after class name");
-    auto body = parseBlock();
-    return std::make_shared<ClassDef>(name, baseClass, body);
+
+    if (!match(TokenType::COLON)) {
+        throw std::runtime_error("Expected ':' after class name");
+    }
+
+    return std::make_shared<ClassDef>(
+        name,
+        baseClass,
+        parseBlock()
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parseReturnStatement() {
     advance();
-    if (check(TokenType::NEWLINE) || check(TokenType::EOF_TOKEN)) {
+
+    if (check(TokenType::NEWLINE) ||
+        check(TokenType::EOF_TOKEN)) {
         return std::make_shared<ReturnStatement>(nullptr);
     }
-    return std::make_shared<ReturnStatement>(parseExpression());
+
+    return std::make_shared<ReturnStatement>(
+        parseExpression()
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parseAssignment() {
     std::string varName = current().value;
     advance();
+
     if (match(TokenType::DOT)) {
-        if (!check(TokenType::NAME)) throw std::runtime_error("Expected attribute name after '.'");
+        if (!check(TokenType::NAME)) {
+            throw std::runtime_error("Expected attribute name after '.'");
+        }
+
         varName += "." + current().value;
         advance();
     }
-    if (!match(TokenType::ASSIGN)) throw std::runtime_error("Expected '=' after variable name");
-    auto expr = parseExpression();
-    return std::make_shared<Assignment>(varName, expr);
+
+    if (!match(TokenType::ASSIGN)) {
+        throw std::runtime_error("Expected '=' after variable name");
+    }
+
+    return std::make_shared<Assignment>(
+        varName,
+        parseExpression()
+    );
 }
 
+
+
 std::shared_ptr<ASTNode> Parser::parseDeclaration() {
-    if (checkKeyword("let")) advance();
+    if (checkKeyword("let")) {
+        advance();
+    }
+
     std::string typeName = current().value;
     advance();
+
     if (!check(TokenType::NAME)) {
         throw std::runtime_error("Expected variable name after type name");
     }
 
     std::string varName = current().value;
     advance();
-    
-    // Try to call the type as a constructor with possible arguments
+
     std::vector<std::shared_ptr<Expression>> args;
+
     if (match(TokenType::LPAREN)) {
         if (!check(TokenType::RPAREN)) {
             do {
                 args.push_back(parseExpression());
             } while (match(TokenType::COMMA));
         }
-        if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after constructor arguments");
+
+        if (!match(TokenType::RPAREN)) {
+            throw std::runtime_error("Expected ')' after constructor arguments");
+        }
     }
-    
-    auto callExpr = std::make_shared<CallExpression>(typeName, args);
-    
-    std::shared_ptr<Expression> init = callExpr;
+
+    std::shared_ptr<Expression> init = std::make_shared<CallExpression>(
+        typeName,
+        args
+    );
+
     if (match(TokenType::ASSIGN)) {
         init = parseExpression();
     }
-    return std::make_shared<Assignment>(varName, init);
+
+    return std::make_shared<Assignment>(
+        varName,
+        init
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parseForStatement() {
     advance();
-    if (!check(TokenType::NAME)) throw std::runtime_error("Expected loop variable name");
+
+    if (!check(TokenType::NAME)) {
+        throw std::runtime_error("Expected loop variable name");
+    }
+
     std::string varName = current().value;
     advance();
-    if (!checkKeyword("in")) throw std::runtime_error("Expected 'in' in for loop");
+
+    if (!checkKeyword("in")) {
+        throw std::runtime_error("Expected 'in' in for loop");
+    }
+
     advance();
+
     auto iterable = parseExpression();
-    if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after for loop header");
-    auto body = parseBlock();
-    return std::make_shared<ForStatement>(varName, iterable, body);
+
+    if (!match(TokenType::COLON)) {
+        throw std::runtime_error("Expected ':' after for loop header");
+    }
+
+    return std::make_shared<ForStatement>(
+        varName,
+        iterable,
+        parseBlock()
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parseTryStatement() {
     advance();
-    if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after try");
+
+    if (!match(TokenType::COLON)) {
+        throw std::runtime_error("Expected ':' after try");
+    }
+
     auto tryBody = parseBlock();
-    if (!checkKeyword("catch")) throw std::runtime_error("Expected 'catch' in try statement");
+
+    if (!checkKeyword("catch")) {
+        throw std::runtime_error("Expected 'catch'");
+    }
+
     advance();
-    if (!check(TokenType::NAME)) throw std::runtime_error("Expected exception name");
-    std::string excName = current().value;
+
+    if (!check(TokenType::NAME)) {
+        throw std::runtime_error("Expected exception name");
+    }
+
+    std::string exceptionName = current().value;
     advance();
-    if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' after catch name");
-    auto catchBody = parseBlock();
-    return std::make_shared<TryStatement>(tryBody, excName, catchBody);
+
+    if (!match(TokenType::COLON)) {
+        throw std::runtime_error("Expected ':' after catch");
+    }
+
+    return std::make_shared<TryStatement>(
+        tryBody,
+        exceptionName,
+        parseBlock()
+    );
 }
 
 std::shared_ptr<ASTNode> Parser::parseImportStatement() {
-    bool isFrom = checkKeyword("from");
-    advance();
-    if (isFrom) {
+    if (checkKeyword("from")) {
+        advance();
+
+        if (!check(TokenType::NAME)) {
+            throw std::runtime_error("Expected module name");
+        }
+
         std::string module = current().value;
         advance();
-        if (!checkKeyword("import")) throw std::runtime_error("Expected 'import' after module name");
+
+        if (!checkKeyword("import")) {
+            throw std::runtime_error("Expected 'import' after module name");
+        }
+
         advance();
+
+        if (!check(TokenType::NAME)) {
+            throw std::runtime_error("Expected name after import");
+        }
+
         std::string item = current().value;
         advance();
-        return std::make_shared<Assignment>(item, std::make_shared<CallExpression>("import", std::vector<std::shared_ptr<Expression>>{ std::make_shared<StringLiteral>(module) }));
+
+        return std::make_shared<Assignment>(
+            item,
+            std::make_shared<CallExpression>(
+                "__import_from__",
+                std::vector<std::shared_ptr<Expression>>{
+                    std::make_shared<StringLiteral>(module),
+                    std::make_shared<StringLiteral>(item)
+                }
+            )
+        );
     }
+
+    advance();
+
+    if (!check(TokenType::NAME)) {
+        throw std::runtime_error("Expected module name after import");
+    }
+
     std::string module = current().value;
     advance();
-    return std::make_shared<Assignment>(module, std::make_shared<CallExpression>("import", std::vector<std::shared_ptr<Expression>>{}));
+
+    return std::make_shared<Assignment>(
+        module,
+        std::make_shared<CallExpression>(
+            "__import__",
+            std::vector<std::shared_ptr<Expression>>{
+                std::make_shared<StringLiteral>(module)
+            }
+        )
+    );
 }
 
 std::shared_ptr<Expression> Parser::parseListLiteral() {
-    if (!match(TokenType::LBRACKET)) throw std::runtime_error("Expected '[' for list literal");
+    if (!match(TokenType::LBRACKET)) {
+        throw std::runtime_error("Expected '['");
+    }
+
     std::vector<std::shared_ptr<Expression>> elems;
+
     if (!check(TokenType::RBRACKET)) {
         do {
             elems.push_back(parseExpression());
         } while (match(TokenType::COMMA));
     }
-    if (!match(TokenType::RBRACKET)) throw std::runtime_error("Expected ']' after list literal");
+
+    if (!match(TokenType::RBRACKET)) {
+        throw std::runtime_error("Expected ']'");
+    }
+
     return std::make_shared<ListLiteral>(elems);
 }
 
 std::shared_ptr<Expression> Parser::parseDictLiteral() {
-    if (!match(TokenType::LBRACE)) throw std::runtime_error("Expected '{' for dict literal");
-    std::vector<std::pair<std::shared_ptr<Expression>, std::shared_ptr<Expression>>> entries;
+    if (!match(TokenType::LBRACE)) {
+        throw std::runtime_error("Expected '{'");
+    }
+
+    std::vector<
+        std::pair<
+            std::shared_ptr<Expression>,
+            std::shared_ptr<Expression>
+        >
+    > entries;
+
     if (!check(TokenType::RBRACE)) {
         do {
             auto key = parseExpression();
-            if (!match(TokenType::COLON)) throw std::runtime_error("Expected ':' in dictionary entry");
+
+            if (!match(TokenType::COLON)) {
+                throw std::runtime_error("Expected ':' in dictionary");
+            }
+
             auto value = parseExpression();
+
             entries.push_back({key, value});
         } while (match(TokenType::COMMA));
     }
-    if (!match(TokenType::RBRACE)) throw std::runtime_error("Expected '}' after dict literal");
+
+    if (!match(TokenType::RBRACE)) {
+        throw std::runtime_error("Expected '}'");
+    }
+
     return std::make_shared<DictLiteral>(entries);
 }
 
 std::shared_ptr<ASTNode> Parser::parseCallStatement() {
     std::string callee = current().value;
     advance();
+
     if (match(TokenType::DOT)) {
-        if (!check(TokenType::NAME)) throw std::runtime_error("Expected method name after '.'");
+        if (!check(TokenType::NAME)) {
+            throw std::runtime_error("Expected method name after '.'");
+        }
+
         callee += "." + current().value;
         advance();
     }
-    if (!match(TokenType::LPAREN)) throw std::runtime_error("Expected '(' after function name");
+
+    if (!match(TokenType::LPAREN)) {
+        throw std::runtime_error("Expected '(' after function name");
+    }
+
     std::vector<std::shared_ptr<Expression>> args;
+
     if (!check(TokenType::RPAREN)) {
         do {
             args.push_back(parseExpression());
         } while (match(TokenType::COMMA));
     }
-    if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after call arguments");
-    return std::make_shared<CallExpression>(callee, args);
+
+    if (!match(TokenType::RPAREN)) {
+        throw std::runtime_error("Expected ')' after arguments");
+    }
+
+    return std::make_shared<CallExpression>(
+        callee,
+        args
+    );
 }
 
 std::shared_ptr<Expression> Parser::parseExpression() {
@@ -483,67 +888,127 @@ std::shared_ptr<Expression> Parser::parseExpression() {
 
 std::shared_ptr<Expression> Parser::parseComparison() {
     auto left = parseAdditive();
-    while (check(TokenType::EQUAL) || check(TokenType::NOT_EQUAL) || check(TokenType::LESS) ||
-           check(TokenType::LESS_EQUAL) || check(TokenType::GREATER) || check(TokenType::GREATER_EQUAL)) {
+
+    while (
+        check(TokenType::EQUAL) ||
+        check(TokenType::NOT_EQUAL) ||
+        check(TokenType::LESS) ||
+        check(TokenType::LESS_EQUAL) ||
+        check(TokenType::GREATER) ||
+        check(TokenType::GREATER_EQUAL)
+    ) {
         std::string op = current().value;
         advance();
+
         auto right = parseAdditive();
-        left = std::make_shared<BinaryOp>(left, op, right);
+
+        left = std::make_shared<BinaryOp>(
+            left,
+            op,
+            right
+        );
     }
+
     return left;
 }
 
 std::shared_ptr<Expression> Parser::parseAdditive() {
     auto left = parseMultiplicative();
-    while (check(TokenType::PLUS) || check(TokenType::MINUS)) {
+
+    while (
+        check(TokenType::PLUS) ||
+        check(TokenType::MINUS)
+    ) {
         std::string op = current().value;
         advance();
+
         auto right = parseMultiplicative();
-        left = std::make_shared<BinaryOp>(left, op, right);
+
+        left = std::make_shared<BinaryOp>(
+            left,
+            op,
+            right
+        );
     }
+
     return left;
 }
 
 std::shared_ptr<Expression> Parser::parseMultiplicative() {
     auto left = parseUnary();
-    while (check(TokenType::STAR) || check(TokenType::SLASH) || check(TokenType::MOD)) {
+
+    while (
+        check(TokenType::STAR) ||
+        check(TokenType::SLASH) ||
+        check(TokenType::MOD)
+    ) {
         std::string op = current().value;
         advance();
+
         auto right = parseUnary();
-        left = std::make_shared<BinaryOp>(left, op, right);
+
+        left = std::make_shared<BinaryOp>(
+            left,
+            op,
+            right
+        );
     }
+
     return left;
 }
 
 std::shared_ptr<Expression> Parser::parseUnary() {
-    if (check(TokenType::PLUS)) { advance(); return parseUnary(); }
-    if (check(TokenType::MINUS)) { advance(); auto v = parseUnary(); return std::make_shared<BinaryOp>(std::make_shared<NumberLiteral>(0), "-", v); }
+    if (check(TokenType::PLUS)) {
+        advance();
+        return parseUnary();
+    }
+
+    if (check(TokenType::MINUS)) {
+        advance();
+
+        auto value = parseUnary();
+
+        return std::make_shared<BinaryOp>(
+            std::make_shared<NumberLiteral>(0),
+            "-",
+            value
+        );
+    }
+
     return parsePrimary();
 }
 
 std::shared_ptr<Expression> Parser::parsePrimary() {
     if (check(TokenType::LPAREN)) {
         advance();
+
         auto expr = parseExpression();
-        if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after expression");
+
+        if (!match(TokenType::RPAREN)) {
+            throw std::runtime_error("Expected ')'");
+        }
+
         return expr;
     }
 
     if (check(TokenType::NUMBER)) {
         int value = std::stoi(current().value);
         advance();
+
         return std::make_shared<NumberLiteral>(value);
     }
 
     if (check(TokenType::STR)) {
         std::string value = current().value;
         advance();
+
         return std::make_shared<StringLiteral>(value);
     }
 
     if (checkKeyword("true") || checkKeyword("false")) {
         bool value = checkKeyword("true");
         advance();
+
         return std::make_shared<BooleanLiteral>(value);
     }
 
@@ -559,33 +1024,91 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
         std::string name = current().value;
         advance();
 
-        std::shared_ptr<Expression> expr = std::make_shared<Identifier>(name);
+        std::shared_ptr<Expression> expr =
+            std::make_shared<Identifier>(name);
 
         while (true) {
             if (match(TokenType::DOT)) {
-                if (!check(TokenType::NAME)) throw std::runtime_error("Expected attribute name after '.'");
+                if (!check(TokenType::NAME)) {
+                    throw std::runtime_error("Expected attribute name after '.'");
+                }
+
                 std::string attribute = current().value;
                 advance();
-                expr = std::make_shared<AttributeAccess>(expr, attribute);
+
+                expr = std::make_shared<AttributeAccess>(
+                    expr,
+                    attribute
+                );
+
                 continue;
             }
+
             if (match(TokenType::LBRACKET)) {
                 auto indexExpr = parseExpression();
-                if (!match(TokenType::RBRACKET)) throw std::runtime_error("Expected ']' after index");
-                expr = std::make_shared<IndexAccess>(expr, indexExpr);
+
+                if (!match(TokenType::RBRACKET)) {
+                    throw std::runtime_error("Expected ']'");
+                }
+
+                expr = std::make_shared<IndexAccess>(
+                    expr,
+                    indexExpr
+                );
+
                 continue;
             }
+
             if (match(TokenType::LPAREN)) {
                 std::vector<std::shared_ptr<Expression>> args;
+
                 if (!check(TokenType::RPAREN)) {
                     do {
                         args.push_back(parseExpression());
                     } while (match(TokenType::COMMA));
                 }
-                if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after call arguments");
-                expr = std::make_shared<CallExpression>(name, args);
-                break;
+
+                if (!match(TokenType::RPAREN)) {
+                    throw std::runtime_error("Expected ')'");
+                }
+
+                std::string callee;
+
+                if (auto identifier =
+                        std::dynamic_pointer_cast<Identifier>(expr)) {
+                    callee = identifier->name;
+                } else if (auto attribute =
+                               std::dynamic_pointer_cast<AttributeAccess>(expr)) {
+                    std::function<std::string(
+                        const std::shared_ptr<Expression>&
+                    )> buildName;
+
+                    buildName = [&](const std::shared_ptr<Expression>& e) -> std::string {
+                        if (auto id = std::dynamic_pointer_cast<Identifier>(e)) {
+                            return id->name;
+                        }
+
+                        if (auto attr =
+                                std::dynamic_pointer_cast<AttributeAccess>(e)) {
+                            return buildName(attr->object) + "." + attr->attribute;
+                        }
+
+                        throw std::runtime_error("Invalid call target");
+                    };
+
+                    callee = buildName(expr);
+                } else {
+                    throw std::runtime_error("Invalid call target");
+                }
+
+                expr = std::make_shared<CallExpression>(
+                    callee,
+                    args
+                );
+
+                continue;
             }
+
             break;
         }
 
@@ -595,234 +1118,588 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
     throw std::runtime_error("Unexpected token in expression");
 }
 
-RuntimeValue Interpreter::callFunction(const std::shared_ptr<RuntimeFunction>& function, const std::vector<RuntimeValue>& args) {
+RuntimeValue Interpreter::callFunction(
+    const std::shared_ptr<RuntimeFunction>& function,
+    const std::vector<RuntimeValue>& args
+) {
     if (args.size() != function->parameters.size()) {
-        throw std::runtime_error("Function " + function->name + " expected " + std::to_string(function->parameters.size()) + " arguments, got " + std::to_string(args.size()));
+        throw std::runtime_error(
+            "Function " + function->name +
+            " expected " +
+            std::to_string(function->parameters.size()) +
+            " arguments, got " +
+            std::to_string(args.size())
+        );
     }
 
-    std::map<std::string, RuntimeValue> localScope = function->closure;
-    if (function->self) localScope["self"] = function->self;
+    std::map<std::string, RuntimeValue> localScope =
+        function->closure;
+
+    if (function->self) {
+        localScope["self"] = function->self;
+    }
+
     for (size_t i = 0; i < function->parameters.size(); ++i) {
         localScope[function->parameters[i]] = args[i];
     }
 
-    std::optional<RuntimeValue> result;
-    for (const auto& stmt : function->body) {
-        auto value = executeStatement(stmt, localScope);
-        if (value.has_value()) {
-            result = value; 
-            break;
-        }
-    }
+    auto result = executeBlock(function->body, localScope);
 
-    return result.value_or(0);
+    return result.value_or(RuntimeValue{0});
 }
 
-RuntimeValue Interpreter::evaluate(const std::shared_ptr<Expression>& expr, std::map<std::string, RuntimeValue>* scope) {
-    if (auto num = std::dynamic_pointer_cast<NumberLiteral>(expr)) return num->value;
-    if (auto b = std::dynamic_pointer_cast<BooleanLiteral>(expr)) return b->value;
-    if (auto s = std::dynamic_pointer_cast<StringLiteral>(expr)) return s->value;
+std::shared_ptr<RuntimeObject> Interpreter::loadModule(
+    const std::string& moduleName
+) {
+    auto cached = modules.find(moduleName);
+
+    if (cached != modules.end()) {
+        return cached->second;
+    }
+
+    std::filesystem::path path =
+        currentDirectory / (moduleName + ".tekst");
+
+    if (!std::filesystem::exists(path)) {
+        throw std::runtime_error(
+            "Module not found: " + path.string()
+        );
+    }
+
+    std::ifstream file(path);
+
+    if (!file) {
+        throw std::runtime_error(
+            "Could not open module: " + path.string()
+        );
+    }
+
+    std::string source;
+    std::string line;
+
+    while (std::getline(file, line)) {
+        source += line;
+        source += '\n';
+    }
+
+    file.close();
+
+    auto tokens = lexer(source);
+    Parser parser(tokens);
+    auto program = parser.parse();
+
+    auto module = std::make_shared<RuntimeObject>();
+    module->className = moduleName;
+
+    modules[moduleName] = module;
+
+    std::map<std::string, RuntimeValue> moduleScope;
+
+    auto oldDirectory = currentDirectory;
+    currentDirectory = path.parent_path();
+
+    executeBlock(program->statements, moduleScope);
+
+    currentDirectory = oldDirectory;
+
+    module->fields = moduleScope;
+
+    return module;
+}
+
+RuntimeValue Interpreter::evaluate(
+    const std::shared_ptr<Expression>& expr,
+    std::map<std::string, RuntimeValue>* scope
+) {
+    if (auto num = std::dynamic_pointer_cast<NumberLiteral>(expr)) {
+        return num->value;
+    }
+
+    if (auto b = std::dynamic_pointer_cast<BooleanLiteral>(expr)) {
+        return b->value;
+    }
+
+    if (auto s = std::dynamic_pointer_cast<StringLiteral>(expr)) {
+        return s->value;
+    }
+
     if (auto id = std::dynamic_pointer_cast<Identifier>(expr)) {
         if (scope) {
             auto it = scope->find(id->name);
-            if (it != scope->end()) return it->second;
+
+            if (it != scope->end()) {
+                return it->second;
+            }
         }
+
         auto it = variables.find(id->name);
-        if (it == variables.end()) throw std::runtime_error("Undefined variable: " + id->name);
+
+        if (it == variables.end()) {
+            throw std::runtime_error(
+                "Undefined variable: " + id->name
+            );
+        }
+
         return it->second;
     }
+
     if (auto attr = std::dynamic_pointer_cast<AttributeAccess>(expr)) {
         auto objectValue = evaluate(attr->object, scope);
-        if (const auto* obj = std::get_if<std::shared_ptr<RuntimeObject>>(&objectValue)) {
+
+        if (const auto* obj =
+                std::get_if<std::shared_ptr<RuntimeObject>>(&objectValue)) {
+
             auto it = (*obj)->fields.find(attr->attribute);
-            if (it == (*obj)->fields.end()) throw std::runtime_error("Undefined attribute: " + attr->attribute);
+
+            if (it == (*obj)->fields.end()) {
+                throw std::runtime_error(
+                    "Undefined attribute: " + attr->attribute
+                );
+            }
+
             return it->second;
         }
-        throw std::runtime_error("Attribute access requires an object");
+
+        throw std::runtime_error(
+            "Attribute access requires an object"
+        );
     }
+
     if (auto index = std::dynamic_pointer_cast<IndexAccess>(expr)) {
         auto container = evaluate(index->object, scope);
         auto idx = evaluate(index->index, scope);
-        if (const auto* objPtr = std::get_if<std::shared_ptr<RuntimeObject>>(&container)) {
-            if ((*objPtr)->className == "__list__") {
+
+        if (const auto* obj =
+                std::get_if<std::shared_ptr<RuntimeObject>>(&container)) {
+
+            if ((*obj)->className == "__list__") {
                 int i = asInt(idx);
-                auto key = std::to_string(i);
-                auto it = (*objPtr)->fields.find(key);
-                if (it == (*objPtr)->fields.end()) throw std::runtime_error("List index out of range");
+                auto it = (*obj)->fields.find(std::to_string(i));
+
+                if (it == (*obj)->fields.end()) {
+                    throw std::runtime_error("List index out of range");
+                }
+
                 return it->second;
             }
-            if ((*objPtr)->className == "__dict__") {
-                if (const auto* key = std::get_if<std::string>(&idx)) {
-                    auto it = (*objPtr)->fields.find(*key);
-                    if (it == (*objPtr)->fields.end()) throw std::runtime_error("Key not found: " + *key);
+
+            if ((*obj)->className == "__dict__") {
+                if (const auto* key =
+                        std::get_if<std::string>(&idx)) {
+
+                    auto it = (*obj)->fields.find(*key);
+
+                    if (it == (*obj)->fields.end()) {
+                        throw std::runtime_error(
+                            "Key not found: " + *key
+                        );
+                    }
+
                     return it->second;
                 }
-                throw std::runtime_error("Dictionary keys must be strings");
+
+                throw std::runtime_error(
+                    "Dictionary keys must be strings"
+                );
             }
         }
-        throw std::runtime_error("Indexing requires a list or dictionary");
+
+        throw std::runtime_error(
+            "Indexing requires a list or dictionary"
+        );
     }
+
     if (auto list = std::dynamic_pointer_cast<ListLiteral>(expr)) {
-        auto listObj = std::make_shared<RuntimeObject>();
-        listObj->className = "__list__";
+        auto obj = std::make_shared<RuntimeObject>();
+        obj->className = "__list__";
+
         for (size_t i = 0; i < list->elements.size(); ++i) {
-            listObj->fields[std::to_string(i)] = evaluate(list->elements[i], scope);
+            obj->fields[std::to_string(i)] =
+                evaluate(list->elements[i], scope);
         }
-        listObj->fields["__size__"] = static_cast<int>(list->elements.size());
-        return listObj;
+
+        obj->fields["__size__"] =
+            static_cast<int>(list->elements.size());
+
+        return obj;
     }
+
     if (auto dict = std::dynamic_pointer_cast<DictLiteral>(expr)) {
-        auto dictObj = std::make_shared<RuntimeObject>();
-        dictObj->className = "__dict__";
+        auto obj = std::make_shared<RuntimeObject>();
+        obj->className = "__dict__";
+
         for (const auto& [keyExpr, valueExpr] : dict->entries) {
             auto key = evaluate(keyExpr, scope);
-            if (const auto* k = std::get_if<std::string>(&key)) {
-                dictObj->fields[*k] = evaluate(valueExpr, scope);
+
+            if (const auto* k =
+                    std::get_if<std::string>(&key)) {
+                obj->fields[*k] =
+                    evaluate(valueExpr, scope);
             } else {
-                throw std::runtime_error("Dictionary keys must be strings");
+                throw std::runtime_error(
+                    "Dictionary keys must be strings"
+                );
             }
         }
-        return dictObj;
+
+        return obj;
     }
+
     if (auto call = std::dynamic_pointer_cast<CallExpression>(expr)) {
         std::vector<RuntimeValue> arguments;
-        for (const auto& arg : call->args) arguments.push_back(evaluate(arg, scope));
+
+        for (const auto& arg : call->args) {
+            arguments.push_back(evaluate(arg, scope));
+        }
+
+        if (call->callee == "__import__") {
+            if (arguments.size() != 1) {
+                throw std::runtime_error(
+                    "import() requires one module name"
+                );
+            }
+
+            std::string moduleName =
+                valueToString(arguments[0]);
+
+            return loadModule(moduleName);
+        }
+
+        if (call->callee == "__import_from__") {
+            if (arguments.size() != 2) {
+                throw std::runtime_error(
+                    "from import requires module and name"
+                );
+            }
+
+            std::string moduleName =
+                valueToString(arguments[0]);
+
+            std::string item =
+                valueToString(arguments[1]);
+
+            auto module = loadModule(moduleName);
+
+            auto it = module->fields.find(item);
+
+            if (it == module->fields.end()) {
+                throw std::runtime_error(
+                    "Module '" + moduleName +
+                    "' has no member '" + item + "'"
+                );
+            }
+
+            return it->second;
+        }
 
         if (call->callee == "input") {
-            std::string prompt;
             if (!arguments.empty()) {
-                prompt = valueToString(arguments[0]);
-                if (!prompt.empty()) {
-                    std::cout << prompt;
-                }
+                std::cout << valueToString(arguments[0]);
             }
+
             std::string value;
             std::getline(std::cin, value);
+
             return value;
         }
 
         if (call->callee == "int") {
-            if (arguments.empty()) throw std::runtime_error("int() requires 1 argument");
-            if (const auto* v = std::get_if<int>(&arguments[0])) return *v;
-            if (const auto* v = std::get_if<bool>(&arguments[0])) return *v ? 1 : 0;
-            if (const auto* v = std::get_if<std::string>(&arguments[0])) return std::stoi(*v);
-            throw std::runtime_error("int() expected a number or string");
+            if (arguments.empty()) {
+                throw std::runtime_error(
+                    "int() requires an argument"
+                );
+            }
+
+            if (const auto* v =
+                    std::get_if<int>(&arguments[0])) {
+                return *v;
+            }
+
+            if (const auto* v =
+                    std::get_if<bool>(&arguments[0])) {
+                return *v ? 1 : 0;
+            }
+
+            if (const auto* v =
+                    std::get_if<std::string>(&arguments[0])) {
+                return std::stoi(*v);
+            }
+
+            throw std::runtime_error(
+                "int() expected number or string"
+            );
         }
 
         if (call->callee == "str") {
-            if (arguments.empty()) return std::string{};
+            if (arguments.empty()) {
+                return std::string{};
+            }
+
             return valueToString(arguments[0]);
         }
 
         if (call->callee == "bool") {
-            if (arguments.empty()) return false;
+            if (arguments.empty()) {
+                return false;
+            }
+
             return asBool(arguments[0]);
         }
 
         if (call->callee == "float") {
-            if (arguments.empty()) throw std::runtime_error("float() requires 1 argument");
-            if (const auto* v = std::get_if<int>(&arguments[0])) return static_cast<double>(*v);
-            if (const auto* v = std::get_if<bool>(&arguments[0])) return *v ? 1.0 : 0.0;
-            if (const auto* v = std::get_if<double>(&arguments[0])) return *v;
-            if (const auto* v = std::get_if<std::string>(&arguments[0])) return std::stod(*v);
-            throw std::runtime_error("float() expected a number or string");
+            if (arguments.empty()) {
+                throw std::runtime_error(
+                    "float() requires an argument"
+                );
+            }
+
+            if (const auto* v =
+                    std::get_if<int>(&arguments[0])) {
+                return static_cast<double>(*v);
+            }
+
+            if (const auto* v =
+                    std::get_if<bool>(&arguments[0])) {
+                return *v ? 1.0 : 0.0;
+            }
+
+            if (const auto* v =
+                    std::get_if<double>(&arguments[0])) {
+                return *v;
+            }
+
+            if (const auto* v =
+                    std::get_if<std::string>(&arguments[0])) {
+                return std::stod(*v);
+            }
+
+            throw std::runtime_error(
+                "float() expected number or string"
+            );
         }
 
         if (call->callee == "len") {
-            if (arguments.empty()) throw std::runtime_error("len() requires 1 argument");
-            if (const auto* v = std::get_if<std::string>(&arguments[0])) return static_cast<int>(v->size());
-            if (const auto* obj = std::get_if<std::shared_ptr<RuntimeObject>>(&arguments[0])) {
+            if (arguments.empty()) {
+                throw std::runtime_error(
+                    "len() requires an argument"
+                );
+            }
+
+            if (const auto* v =
+                    std::get_if<std::string>(&arguments[0])) {
+                return static_cast<int>(v->size());
+            }
+
+            if (const auto* obj =
+                    std::get_if<std::shared_ptr<RuntimeObject>>(
+                        &arguments[0])) {
+
                 if ((*obj)->className == "__list__") {
                     int size = 0;
-                    for (size_t i = 0; i < 1000; ++i) {
-                        if ((*obj)->fields.find(std::to_string(i)) == (*obj)->fields.end()) break;
+
+                    while (
+                        (*obj)->fields.find(
+                            std::to_string(size)
+                        ) != (*obj)->fields.end()
+                    ) {
                         ++size;
                     }
+
                     return size;
                 }
+
                 if ((*obj)->className == "__dict__") {
                     int size = 0;
-                    for (const auto& [k, val] : (*obj)->fields) {
-                        if (k != "__size__" && k != "__type__") ++size;
+
+                    for (const auto& [k, v] : (*obj)->fields) {
+                        if (k != "__size__" &&
+                            k != "__type__") {
+                            ++size;
+                        }
                     }
+
                     return size;
                 }
             }
-            throw std::runtime_error("len() expected a string, list, or dictionary");
-        }
 
-        if (call->callee == "import") {
-            auto dictObj = std::make_shared<RuntimeObject>();
-            dictObj->className = "__dict__";
-            if (!arguments.empty()) {
-                std::string moduleName = valueToString(arguments[0]);
-                if (moduleName == "math") {
-                    auto sqrtFn = std::make_shared<RuntimeFunction>();
-                    sqrtFn->name = "sqrt";
-                    dictObj->fields["sqrt"] = sqrtFn;
-                }
-            }
-            return dictObj;
+            throw std::runtime_error(
+                "len() expected string, list, or dictionary"
+            );
         }
 
         if (call->callee.find('.') != std::string::npos) {
-            std::string objectName = call->callee.substr(0, call->callee.find('.'));
-            std::string methodName = call->callee.substr(call->callee.find('.') + 1);
-            auto objIt = scope ? scope->find(objectName) : variables.find(objectName);
-            if (objIt == (scope ? scope->end() : variables.end())) {
-                auto globalIt = variables.find(objectName);
-                if (globalIt == variables.end()) throw std::runtime_error("Undefined object: " + objectName);
-                objIt = globalIt;
-            }
-            if (const auto* obj = std::get_if<std::shared_ptr<RuntimeObject>>(&objIt->second)) {
-                auto methodIt = (*obj)->fields.find(methodName);
-                if (methodIt == (*obj)->fields.end()) throw std::runtime_error("Undefined method: " + methodName + " on " + objectName);
-                if (const auto* fn = std::get_if<std::shared_ptr<RuntimeFunction>>(&methodIt->second)) {
-                    auto bound = *fn;
-                    bound->self = *obj;
-                    return callFunction(bound, arguments);
+            size_t dot = call->callee.find('.');
+
+            std::string objectName =
+                call->callee.substr(0, dot);
+
+            std::string methodName =
+                call->callee.substr(dot + 1);
+
+            RuntimeValue objectValue;
+
+            if (scope) {
+                auto it = scope->find(objectName);
+
+                if (it != scope->end()) {
+                    objectValue = it->second;
+                } else {
+                    auto global = variables.find(objectName);
+
+                    if (global == variables.end()) {
+                        throw std::runtime_error(
+                            "Undefined object: " + objectName
+                        );
+                    }
+
+                    objectValue = global->second;
                 }
+            } else {
+                auto it = variables.find(objectName);
+
+                if (it == variables.end()) {
+                    throw std::runtime_error(
+                        "Undefined object: " + objectName
+                    );
+                }
+
+                objectValue = it->second;
             }
-            throw std::runtime_error("Method call target is not an object: " + objectName);
+
+            auto obj =
+                std::get_if<std::shared_ptr<RuntimeObject>>(
+                    &objectValue
+                );
+
+            if (!obj) {
+                throw std::runtime_error(
+                    "Method call target is not an object"
+                );
+            }
+
+            auto method =
+                (*obj)->fields.find(methodName);
+
+            if (method == (*obj)->fields.end()) {
+                throw std::runtime_error(
+                    "Undefined method: " + methodName
+                );
+            }
+
+            if (const auto* fn =
+                    std::get_if<std::shared_ptr<RuntimeFunction>>(
+                        &method->second)) {
+
+                auto bound = std::make_shared<RuntimeFunction>(**fn);
+                bound->self = *obj;
+
+                return callFunction(
+                    bound,
+                    arguments
+                );
+            }
+
+            throw std::runtime_error(
+                "Object member is not callable"
+            );
         }
 
-        auto it = scope ? scope->find(call->callee) : variables.find(call->callee);
-        if (it == (scope ? scope->end() : variables.end())) {
-            auto globalIt = variables.find(call->callee);
-            if (globalIt == variables.end()) throw std::runtime_error("Undefined function or class: " + call->callee);
-            it = globalIt;
-        }
-        if (const auto* fn = std::get_if<std::shared_ptr<RuntimeFunction>>(&it->second)) {
-            return callFunction(*fn, arguments);
-        }
-        if (const auto* obj = std::get_if<std::shared_ptr<RuntimeObject>>(&it->second)) {
-            auto instance = std::make_shared<RuntimeObject>();
-            instance->className = (*obj)->className;
+        RuntimeValue functionValue;
 
-            auto initIt = (*obj)->fields.find("__init__");
+        if (scope) {
+            auto it = scope->find(call->callee);
+
+            if (it != scope->end()) {
+                functionValue = it->second;
+            } else {
+                auto global = variables.find(call->callee);
+
+                if (global == variables.end()) {
+                    throw std::runtime_error(
+                        "Undefined function or class: " +
+                        call->callee
+                    );
+                }
+
+                functionValue = global->second;
+            }
+        } else {
+            auto it = variables.find(call->callee);
+
+            if (it == variables.end()) {
+                throw std::runtime_error(
+                    "Undefined function or class: " +
+                    call->callee
+                );
+            }
+
+            functionValue = it->second;
+        }
+
+        if (const auto* fn =
+                std::get_if<std::shared_ptr<RuntimeFunction>>(
+                    &functionValue)) {
+
+            return callFunction(
+                *fn,
+                arguments
+            );
+        }
+
+        if (const auto* obj =
+                std::get_if<std::shared_ptr<RuntimeObject>>(
+                    &functionValue)) {
+
+            auto instance =
+                std::make_shared<RuntimeObject>();
+
+            instance->className =
+                (*obj)->className;
+
+            auto initIt =
+                (*obj)->fields.find("__init__");
+
             if (initIt != (*obj)->fields.end()) {
-                if (const auto* initFn = std::get_if<std::shared_ptr<RuntimeFunction>>(&initIt->second)) {
-                    auto init = *initFn;
+                if (const auto* initFn =
+                        std::get_if<std::shared_ptr<RuntimeFunction>>(
+                            &initIt->second)) {
+
+                    auto init =
+                        std::make_shared<RuntimeFunction>(**initFn);
+
                     init->self = instance;
-                    std::vector<std::string> paramsWithoutSelf(init->parameters.begin() + 1, init->parameters.end());
 
-                    if (arguments.size() < paramsWithoutSelf.size()) {
-                        arguments.resize(paramsWithoutSelf.size(), RuntimeValue{std::string{}});
-                    }
-                    if (arguments.size() != paramsWithoutSelf.size()) {
-                        throw std::runtime_error("Function __init__ expected " + std::to_string(paramsWithoutSelf.size()) + " arguments, got " + std::to_string(arguments.size()));
+                    std::vector<std::string> params;
+
+                    if (init->parameters.size() > 1) {
+                        params.assign(
+                            init->parameters.begin() + 1,
+                            init->parameters.end()
+                        );
                     }
 
-                    std::map<std::string, RuntimeValue> localScope = init->closure;
+                    if (arguments.size() != params.size()) {
+                        throw std::runtime_error(
+                            "__init__ expected " +
+                            std::to_string(params.size()) +
+                            " arguments, got " +
+                            std::to_string(arguments.size())
+                        );
+                    }
+
+                    std::map<std::string, RuntimeValue> localScope =
+                        init->closure;
+
                     localScope["self"] = instance;
-                    for (size_t i = 0; i < paramsWithoutSelf.size(); ++i) {
-                        localScope[paramsWithoutSelf[i]] = arguments[i];
+
+                    for (size_t i = 0; i < params.size(); ++i) {
+                        localScope[params[i]] = arguments[i];
                     }
 
-                    for (const auto& stmt : init->body) {
-                        auto value = executeStatement(stmt, localScope);
-                        if (value.has_value()) break;
-                    }
+                    executeBlock(
+                        init->body,
+                        localScope
+                    );
                 }
             }
 
@@ -831,166 +1708,371 @@ RuntimeValue Interpreter::evaluate(const std::shared_ptr<Expression>& expr, std:
                     instance->fields[name] = value;
                 }
             }
+
             return instance;
         }
-        throw std::runtime_error("Undefined function or class: " + call->callee);
+
+        throw std::runtime_error(
+            "Object is not callable"
+        );
     }
-    if (auto binop = std::dynamic_pointer_cast<BinaryOp>(expr)) {
-        RuntimeValue left = evaluate(binop->left, scope);
-        RuntimeValue right = evaluate(binop->right, scope);
+
+    if (auto binop =
+            std::dynamic_pointer_cast<BinaryOp>(expr)) {
+
+        RuntimeValue left =
+            evaluate(binop->left, scope);
+
+        RuntimeValue right =
+            evaluate(binop->right, scope);
 
         if (binop->op == "+") {
-            if (const auto* lv = std::get_if<int>(&left); lv && std::get_if<int>(&right)) return *lv + asInt(right);
-            if (const auto* lv = std::get_if<std::string>(&left); lv && std::get_if<std::string>(&right)) return *lv + *std::get_if<std::string>(&right);
-            if (std::get_if<std::string>(&left) || std::get_if<std::string>(&right)) {
-                return valueToString(left) + valueToString(right);
+            if (std::get_if<int>(&left) &&
+                std::get_if<int>(&right)) {
+                return asInt(left) + asInt(right);
             }
-            return asInt(left) + asInt(right);
+
+            if (std::get_if<std::string>(&left) &&
+                std::get_if<std::string>(&right)) {
+                return std::get<std::string>(left) +
+                       std::get<std::string>(right);
+            }
+
+            return valueToString(left) +
+                   valueToString(right);
         }
-        if (binop->op == "-") return asInt(left) - asInt(right);
-        if (binop->op == "*") return asInt(left) * asInt(right);
+
+        if (binop->op == "-") {
+            return asInt(left) - asInt(right);
+        }
+
+        if (binop->op == "*") {
+            return asInt(left) * asInt(right);
+        }
+
         if (binop->op == "/") {
-            int r = asInt(right);
-            if (r == 0) throw std::runtime_error("Division by zero");
-            return asInt(left) / r;
+            int divisor = asInt(right);
+
+            if (divisor == 0) {
+                throw std::runtime_error(
+                    "Division by zero"
+                );
+            }
+
+            return asInt(left) / divisor;
         }
-        if (binop->op == "%") return asInt(left) % asInt(right);
-        if (binop->op == "==") return asInt(left) == asInt(right);
-        if (binop->op == "!=") return asInt(left) != asInt(right);
-        if (binop->op == "<") return asInt(left) < asInt(right);
-        if (binop->op == "<=") return asInt(left) <= asInt(right);
-        if (binop->op == ">") return asInt(left) > asInt(right);
-        if (binop->op == ">=") return asInt(left) >= asInt(right);
-        throw std::runtime_error("Unknown operator: " + binop->op);
+
+        if (binop->op == "%") {
+            return asInt(left) % asInt(right);
+        }
+
+        if (binop->op == "==") {
+            return valueToString(left) ==
+                   valueToString(right);
+        }
+
+        if (binop->op == "!=") {
+            return valueToString(left) !=
+                   valueToString(right);
+        }
+
+        if (binop->op == "<") {
+            return asInt(left) < asInt(right);
+        }
+
+        if (binop->op == "<=") {
+            return asInt(left) <= asInt(right);
+        }
+
+        if (binop->op == ">") {
+            return asInt(left) > asInt(right);
+        }
+
+        if (binop->op == ">=") {
+            return asInt(left) >= asInt(right);
+        }
+
+        throw std::runtime_error(
+            "Unknown operator: " + binop->op
+        );
     }
 
-    throw std::runtime_error("Cannot evaluate expression");
+    throw std::runtime_error(
+        "Cannot evaluate expression"
+    );
 }
 
-std::optional<RuntimeValue> Interpreter::executeStatement(const std::shared_ptr<ASTNode>& stmt, std::map<std::string, RuntimeValue>& scope) {
-    if (auto assign = std::dynamic_pointer_cast<Assignment>(stmt)) {
-        auto value = evaluate(assign->expr, &scope);
+std::optional<RuntimeValue> Interpreter::executeStatement(
+    const std::shared_ptr<ASTNode>& stmt,
+    std::map<std::string, RuntimeValue>& scope
+) {
+    if (auto assign =
+            std::dynamic_pointer_cast<Assignment>(stmt)) {
+
+        auto value =
+            evaluate(assign->expr, &scope);
+
         if (assign->var.find('.') != std::string::npos) {
-            auto dot = assign->var.find('.');
-            std::string objName = assign->var.substr(0, dot);
-            std::string attr = assign->var.substr(dot + 1);
-            auto it = scope.find(objName);
-            if (it == scope.end()) throw std::runtime_error("Undefined object: " + objName);
-            auto obj = std::get_if<std::shared_ptr<RuntimeObject>>(&it->second);
-            if (!obj) throw std::runtime_error("Attribute assignment requires an object");
-            (*obj)->fields[attr] = value;
+            size_t dot = assign->var.find('.');
+
+            std::string objectName =
+                assign->var.substr(0, dot);
+
+            std::string attribute =
+                assign->var.substr(dot + 1);
+
+            auto it = scope.find(objectName);
+
+            if (it == scope.end()) {
+                throw std::runtime_error(
+                    "Undefined object: " + objectName
+                );
+            }
+
+            auto obj =
+                std::get_if<std::shared_ptr<RuntimeObject>>(
+                    &it->second
+                );
+
+            if (!obj) {
+                throw std::runtime_error(
+                    "Attribute assignment requires object"
+                );
+            }
+
+            (*obj)->fields[attribute] = value;
+
             return std::nullopt;
         }
+
         scope[assign->var] = value;
+
         return std::nullopt;
     }
 
-    if (auto printStmt = std::dynamic_pointer_cast<PrintStatement>(stmt)) {
-        std::cout << valueToString(evaluate(printStmt->expr, &scope)) << '\n';
+    if (auto printStmt =
+            std::dynamic_pointer_cast<PrintStatement>(stmt)) {
+
+        std::cout <<
+            valueToString(
+                evaluate(printStmt->expr, &scope)
+            ) << '\n';
+
         return std::nullopt;
     }
 
-    if (auto callExpr = std::dynamic_pointer_cast<CallExpression>(stmt)) {
+    if (auto callExpr =
+            std::dynamic_pointer_cast<CallExpression>(stmt)) {
+
         evaluate(callExpr, &scope);
+
         return std::nullopt;
     }
 
-    if (auto ret = std::dynamic_pointer_cast<ReturnStatement>(stmt)) {
-        return ret->expr ? evaluate(ret->expr, &scope) : RuntimeValue{0};
+    if (auto ret =
+            std::dynamic_pointer_cast<ReturnStatement>(stmt)) {
+
+        if (ret->expr) {
+            return evaluate(ret->expr, &scope);
+        }
+
+        return RuntimeValue{0};
     }
 
-    if (auto func = std::dynamic_pointer_cast<FunctionDef>(stmt)) {
+    if (auto func =
+            std::dynamic_pointer_cast<FunctionDef>(stmt)) {
+
         auto fn = std::make_shared<RuntimeFunction>();
+
         fn->name = func->name;
         fn->parameters = func->parameters;
         fn->body = func->body;
         fn->closure = scope;
+
         scope[func->name] = fn;
+
         return std::nullopt;
     }
 
-    if (auto cls = std::dynamic_pointer_cast<ClassDef>(stmt)) {
-        auto classObject = std::make_shared<RuntimeObject>();
+    if (auto cls =
+            std::dynamic_pointer_cast<ClassDef>(stmt)) {
+
+        auto classObject =
+            std::make_shared<RuntimeObject>();
+
         classObject->className = cls->name;
+
         for (const auto& child : cls->body) {
-            if (auto innerFunc = std::dynamic_pointer_cast<FunctionDef>(child)) {
-                auto fn = std::make_shared<RuntimeFunction>();
+            if (auto innerFunc =
+                    std::dynamic_pointer_cast<FunctionDef>(child)) {
+
+                auto fn =
+                    std::make_shared<RuntimeFunction>();
+
                 fn->name = innerFunc->name;
                 fn->parameters = innerFunc->parameters;
                 fn->body = innerFunc->body;
                 fn->closure = scope;
+
                 classObject->fields[innerFunc->name] = fn;
-            } else if (auto innerAssign = std::dynamic_pointer_cast<Assignment>(child)) {
-                classObject->fields[innerAssign->var] = evaluate(innerAssign->expr);
+            } else if (auto innerAssign =
+                           std::dynamic_pointer_cast<Assignment>(child)) {
+
+                classObject->fields[innerAssign->var] =
+                    evaluate(innerAssign->expr, &scope);
             }
         }
+
         scope[cls->name] = classObject;
+
         return std::nullopt;
     }
 
-    if (auto ifStmt = std::dynamic_pointer_cast<IfStatement>(stmt)) {
-        RuntimeValue cond = evaluate(ifStmt->condition, &scope);
-        if (asBool(cond)) {
-            return executeBlock(ifStmt->body, scope);
+    if (auto ifStmt =
+            std::dynamic_pointer_cast<IfStatement>(stmt)) {
+
+        if (asBool(
+                evaluate(ifStmt->condition, &scope)
+            )) {
+
+            return executeBlock(
+                ifStmt->body,
+                scope
+            );
         }
+
         if (!ifStmt->elseBody.empty()) {
-            return executeBlock(ifStmt->elseBody, scope);
+            return executeBlock(
+                ifStmt->elseBody,
+                scope
+            );
         }
+
         return std::nullopt;
     }
 
-    if (auto whileStmt = std::dynamic_pointer_cast<WhileStatement>(stmt)) {
-        while (asBool(evaluate(whileStmt->condition, &scope))) {
-            auto result = executeBlock(whileStmt->body, scope);
-            if (result.has_value()) return result;
-        }
-        return std::nullopt;
-    }
+    if (auto whileStmt =
+            std::dynamic_pointer_cast<WhileStatement>(stmt)) {
 
-    if (auto forStmt = std::dynamic_pointer_cast<ForStatement>(stmt)) {
-        auto iterableValue = evaluate(forStmt->iterable, &scope);
-        if (const auto* objPtr = std::get_if<std::shared_ptr<RuntimeObject>>(&iterableValue)) {
-            if ((*objPtr)->className == "__list__") {
-                for (size_t i = 0; i < 1000; ++i) {
-                    auto key = std::to_string(i);
-                    auto it = (*objPtr)->fields.find(key);
-                    if (it == (*objPtr)->fields.end()) break;
-                    scope[forStmt->var] = it->second;
-                    auto result = executeBlock(forStmt->body, scope);
-                    if (result.has_value()) return result;
-                }
-                return std::nullopt;
+        while (asBool(
+            evaluate(whileStmt->condition, &scope)
+        )) {
+            auto result =
+                executeBlock(
+                    whileStmt->body,
+                    scope
+                );
+
+            if (result.has_value()) {
+                return result;
             }
         }
-        throw std::runtime_error("For loops require a list value");
-    }
 
-    if (auto tryStmt = std::dynamic_pointer_cast<TryStatement>(stmt)) {
-        try {
-            auto result = executeBlock(tryStmt->tryBody, scope);
-            if (result.has_value()) return result;
-        } catch (const std::exception&) {
-            return executeBlock(tryStmt->catchBody, scope);
-        }
         return std::nullopt;
     }
 
-    throw std::runtime_error("Unsupported statement type");
+    if (auto forStmt =
+            std::dynamic_pointer_cast<ForStatement>(stmt)) {
+
+        auto iterable =
+            evaluate(forStmt->iterable, &scope);
+
+        auto obj =
+            std::get_if<std::shared_ptr<RuntimeObject>>(
+                &iterable
+            );
+
+        if (!obj || (*obj)->className != "__list__") {
+            throw std::runtime_error(
+                "For loops require a list"
+            );
+        }
+
+        for (size_t i = 0; i < 1000; ++i) {
+            auto it =
+                (*obj)->fields.find(
+                    std::to_string(i)
+                );
+
+            if (it == (*obj)->fields.end()) {
+                break;
+            }
+
+            scope[forStmt->var] = it->second;
+
+            auto result =
+                executeBlock(
+                    forStmt->body,
+                    scope
+                );
+
+            if (result.has_value()) {
+                return result;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    if (auto tryStmt =
+            std::dynamic_pointer_cast<TryStatement>(stmt)) {
+
+        try {
+            return executeBlock(
+                tryStmt->tryBody,
+                scope
+            );
+        } catch (const std::exception&) {
+            return executeBlock(
+                tryStmt->catchBody,
+                scope
+            );
+        }
+    }
+
+    throw std::runtime_error(
+        "Unsupported statement type"
+    );
 }
 
-std::optional<RuntimeValue> Interpreter::executeBlock(const std::vector<std::shared_ptr<ASTNode>>& block, std::map<std::string, RuntimeValue>& scope) {
+std::optional<RuntimeValue> Interpreter::executeBlock(
+    const std::vector<std::shared_ptr<ASTNode>>& block,
+    std::map<std::string, RuntimeValue>& scope
+) {
     for (const auto& stmt : block) {
-        auto result = executeStatement(stmt, scope);
-        if (result.has_value()) return result;
+        auto result =
+            executeStatement(stmt, scope);
+
+        if (result.has_value()) {
+            return result;
+        }
     }
+
     return std::nullopt;
 }
 
-void Interpreter::execute(const std::shared_ptr<Program>& program) {
-    executeBlock(program->statements, variables);
+void Interpreter::execute(
+    const std::shared_ptr<Program>& program,
+    const std::filesystem::path& sourceDirectory
+) {
+    currentDirectory =
+        std::filesystem::absolute(sourceDirectory);
+
+    executeBlock(
+        program->statements,
+        variables
+    );
 }
 
 void Interpreter::printVariables() const {
     std::cout << "\nVariables:\n";
-    for (const auto& pair : variables) std::cout << "  " << pair.first << " = " << valueToString(pair.second) << "\n";
+
+    for (const auto& [name, value] : variables) {
+        std::cout <<
+            "  " <<
+            name <<
+            " = " <<
+            valueToString(value) <<
+            '\n';
+    }
 }

@@ -1,25 +1,26 @@
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <vector>
-#include <cctype>
 #include "lexer.h"
+#include <stdexcept>
+#include <cctype>
 
 static bool isKeyword(const std::string& text) {
     static const std::vector<std::string> keywords = {
-        "print", "if", "else", "elif", "while", "for", "in", "and", "or", "not",
-        "def", "fn", "let", "class", "return", "extends", "try", "catch", "throw",
+        "print", "if", "else", "elif", "while", "for", "in",
+        "and", "or", "not", "def", "fn", "let", "class",
+        "return", "extends", "try", "catch", "throw",
         "import", "from", "as", "true", "false"
     };
+
     for (const auto& kw : keywords) {
         if (text == kw) return true;
     }
+
     return false;
 }
 
 std::vector<Token> lexer(const std::string& source) {
     std::vector<Token> tokens;
     std::vector<int> indentationStack = {0};
+
     size_t i = 0;
     bool atLineStart = true;
     int currentLineIndent = 0;
@@ -30,25 +31,32 @@ std::vector<Token> lexer(const std::string& source) {
         if (atLineStart) {
             if (c == '\n') {
                 tokens.push_back({TokenType::NEWLINE, "\n"});
-                i++;
+                ++i;
                 currentLineIndent = 0;
                 continue;
             }
 
             if (c == ' ' || c == '\t') {
-                currentLineIndent += (c == '\t') ? 4 : 1;
-                i++;
+                currentLineIndent += c == '\t' ? 4 : 1;
+                ++i;
                 continue;
             }
 
-            while (indentationStack.size() > 1 && currentLineIndent < indentationStack.back()) {
+            while (indentationStack.size() > 1 &&
+                   currentLineIndent < indentationStack.back()) {
                 indentationStack.pop_back();
-                tokens.push_back({TokenType::DEDENT, std::to_string(indentationStack.back())});
+                tokens.push_back({
+                    TokenType::DEDENT,
+                    std::to_string(indentationStack.back())
+                });
             }
 
             if (currentLineIndent > indentationStack.back()) {
                 indentationStack.push_back(currentLineIndent);
-                tokens.push_back({TokenType::INDENT, std::to_string(currentLineIndent)});
+                tokens.push_back({
+                    TokenType::INDENT,
+                    std::to_string(currentLineIndent)
+                });
             } else if (currentLineIndent < indentationStack.back()) {
                 throw std::runtime_error("Inconsistent indentation");
             }
@@ -59,35 +67,42 @@ std::vector<Token> lexer(const std::string& source) {
 
         if (c == '\n') {
             tokens.push_back({TokenType::NEWLINE, "\n"});
-            i++;
+            ++i;
             atLineStart = true;
             currentLineIndent = 0;
             continue;
         }
 
         if (std::isspace(static_cast<unsigned char>(c))) {
-            i++;
+            ++i;
             continue;
         }
 
         if (std::isdigit(static_cast<unsigned char>(c))) {
             std::string num;
-            while (i < source.length() && std::isdigit(static_cast<unsigned char>(source[i]))) {
-                num += source[i];
-                i++;
+
+            while (i < source.length() &&
+                   std::isdigit(static_cast<unsigned char>(source[i]))) {
+                num += source[i++];
             }
+
             tokens.push_back({TokenType::NUMBER, num});
             continue;
         }
 
         if (c == '"') {
-            i++;
+            ++i;
             std::string str;
+
             while (i < source.length() && source[i] != '"') {
-                str += source[i];
-                i++;
+                str += source[i++];
             }
-            if (i < source.length()) i++;
+
+            if (i >= source.length()) {
+                throw std::runtime_error("Unterminated string");
+            }
+
+            ++i;
             tokens.push_back({TokenType::STR, str});
             continue;
         }
@@ -98,12 +113,13 @@ std::vector<Token> lexer(const std::string& source) {
             continue;
         }
 
+        if (c == '!' && i + 1 < source.length() && source[i + 1] == '=') {
+            tokens.push_back({TokenType::NOT_EQUAL, "!="});
+            i += 2;
+            continue;
+        }
+
         if (c == '!') {
-            if (i + 1 < source.length() && source[i + 1] == '=') {
-                tokens.push_back({TokenType::NOT_EQUAL, "!="});
-                i += 2;
-                continue;
-            }
             throw std::runtime_error("Unexpected ! token");
         }
 
@@ -113,7 +129,7 @@ std::vector<Token> lexer(const std::string& source) {
                 i += 2;
             } else {
                 tokens.push_back({TokenType::LESS, "<"});
-                i++;
+                ++i;
             }
             continue;
         }
@@ -124,37 +140,108 @@ std::vector<Token> lexer(const std::string& source) {
                 i += 2;
             } else {
                 tokens.push_back({TokenType::GREATER, ">"});
-                i++;
+                ++i;
             }
             continue;
         }
 
         if (c == '=') {
             tokens.push_back({TokenType::ASSIGN, "="});
-            i++;
+            ++i;
             continue;
         }
 
-        if (c == '+') { tokens.push_back({TokenType::PLUS, "+"}); i++; continue; }
-        if (c == '-') { tokens.push_back({TokenType::MINUS, "-"}); i++; continue; }
-        if (c == '*') { tokens.push_back({TokenType::STAR, "*"}); i++; continue; }
-        if (c == '/') { tokens.push_back({TokenType::SLASH, "/"}); i++; continue; }
-        if (c == '%') { tokens.push_back({TokenType::MOD, "%"}); i++; continue; }
-        if (c == '(') { tokens.push_back({TokenType::LPAREN, "("}); i++; continue; }
-        if (c == ')') { tokens.push_back({TokenType::RPAREN, ")"}); i++; continue; }
-        if (c == '[') { tokens.push_back({TokenType::LBRACKET, "["}); i++; continue; }
-        if (c == ']') { tokens.push_back({TokenType::RBRACKET, "]"}); i++; continue; }
-        if (c == '{') { tokens.push_back({TokenType::LBRACE, "{"}); i++; continue; }
-        if (c == '}') { tokens.push_back({TokenType::RBRACE, "}"}); i++; continue; }
-        if (c == ':') { tokens.push_back({TokenType::COLON, ":"}); i++; continue; }
-        if (c == ',') { tokens.push_back({TokenType::COMMA, ","}); i++; continue; }
-        if (c == '.') { tokens.push_back({TokenType::DOT, "."}); i++; continue; }
+        if (c == '+') {
+            tokens.push_back({TokenType::PLUS, "+"});
+            ++i;
+            continue;
+        }
+
+        if (c == '-') {
+            tokens.push_back({TokenType::MINUS, "-"});
+            ++i;
+            continue;
+        }
+
+        if (c == '*') {
+            tokens.push_back({TokenType::STAR, "*"});
+            ++i;
+            continue;
+        }
+
+        if (c == '/') {
+            tokens.push_back({TokenType::SLASH, "/"});
+            ++i;
+            continue;
+        }
+
+        if (c == '%') {
+            tokens.push_back({TokenType::MOD, "%"});
+            ++i;
+            continue;
+        }
+
+        if (c == '(') {
+            tokens.push_back({TokenType::LPAREN, "("});
+            ++i;
+            continue;
+        }
+
+        if (c == ')') {
+            tokens.push_back({TokenType::RPAREN, ")"});
+            ++i;
+            continue;
+        }
+
+        if (c == '[') {
+            tokens.push_back({TokenType::LBRACKET, "["});
+            ++i;
+            continue;
+        }
+
+        if (c == ']') {
+            tokens.push_back({TokenType::RBRACKET, "]"});
+            ++i;
+            continue;
+        }
+
+        if (c == '{') {
+            tokens.push_back({TokenType::LBRACE, "{"});
+            ++i;
+            continue;
+        }
+
+        if (c == '}') {
+            tokens.push_back({TokenType::RBRACE, "}"});
+            ++i;
+            continue;
+        }
+
+        if (c == ':') {
+            tokens.push_back({TokenType::COLON, ":"});
+            ++i;
+            continue;
+        }
+
+        if (c == ',') {
+            tokens.push_back({TokenType::COMMA, ","});
+            ++i;
+            continue;
+        }
+
+        if (c == '.') {
+            tokens.push_back({TokenType::DOT, "."});
+            ++i;
+            continue;
+        }
 
         if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
             std::string name;
-            while (i < source.length() && (std::isalnum(static_cast<unsigned char>(source[i])) || source[i] == '_')) {
-                name += source[i];
-                i++;
+
+            while (i < source.length() &&
+                   (std::isalnum(static_cast<unsigned char>(source[i])) ||
+                    source[i] == '_')) {
+                name += source[i++];
             }
 
             if (isKeyword(name)) {
@@ -162,6 +249,7 @@ std::vector<Token> lexer(const std::string& source) {
             } else {
                 tokens.push_back({TokenType::NAME, name});
             }
+
             continue;
         }
 
@@ -170,9 +258,13 @@ std::vector<Token> lexer(const std::string& source) {
 
     while (indentationStack.size() > 1) {
         indentationStack.pop_back();
-        tokens.push_back({TokenType::DEDENT, std::to_string(indentationStack.back())});
+        tokens.push_back({
+            TokenType::DEDENT,
+            std::to_string(indentationStack.back())
+        });
     }
 
     tokens.push_back({TokenType::EOF_TOKEN, ""});
+
     return tokens;
 }

@@ -6,6 +6,7 @@
 #include <map>
 #include <optional>
 #include <variant>
+#include <filesystem>
 #include "lexer.h"
 
 class ASTNode;
@@ -13,7 +14,14 @@ class ASTNode;
 struct RuntimeObject;
 struct RuntimeFunction;
 
-using RuntimeValue = std::variant<int, bool, std::string, double, std::shared_ptr<RuntimeObject>, std::shared_ptr<RuntimeFunction>>;
+using RuntimeValue = std::variant<
+    int,
+    bool,
+    std::string,
+    double,
+    std::shared_ptr<RuntimeObject>,
+    std::shared_ptr<RuntimeFunction>
+>;
 
 struct RuntimeObject {
     std::string className;
@@ -72,8 +80,13 @@ public:
     std::shared_ptr<Expression> left;
     std::string op;
     std::shared_ptr<Expression> right;
-    BinaryOp(std::shared_ptr<Expression> l, const std::string& o, std::shared_ptr<Expression> r)
-        : left(l), op(o), right(r) {}
+
+    BinaryOp(
+        std::shared_ptr<Expression> l,
+        const std::string& o,
+        std::shared_ptr<Expression> r
+    ) : left(l), op(o), right(r) {}
+
     std::string toString() const override;
 };
 
@@ -81,8 +94,12 @@ class CallExpression : public Expression {
 public:
     std::string callee;
     std::vector<std::shared_ptr<Expression>> args;
-    CallExpression(const std::string& n, const std::vector<std::shared_ptr<Expression>>& a)
-        : callee(n), args(a) {}
+
+    CallExpression(
+        const std::string& n,
+        const std::vector<std::shared_ptr<Expression>>& a
+    ) : callee(n), args(a) {}
+
     std::string toString() const override;
 };
 
@@ -90,8 +107,12 @@ class AttributeAccess : public Expression {
 public:
     std::shared_ptr<Expression> object;
     std::string attribute;
-    AttributeAccess(std::shared_ptr<Expression> obj, const std::string& attr)
-        : object(obj), attribute(attr) {}
+
+    AttributeAccess(
+        std::shared_ptr<Expression> obj,
+        const std::string& attr
+    ) : object(obj), attribute(attr) {}
+
     std::string toString() const override;
 };
 
@@ -99,22 +120,43 @@ class IndexAccess : public Expression {
 public:
     std::shared_ptr<Expression> object;
     std::shared_ptr<Expression> index;
-    IndexAccess(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> idx)
-        : object(obj), index(idx) {}
+
+    IndexAccess(
+        std::shared_ptr<Expression> obj,
+        std::shared_ptr<Expression> idx
+    ) : object(obj), index(idx) {}
+
     std::string toString() const override;
 };
 
 class ListLiteral : public Expression {
 public:
     std::vector<std::shared_ptr<Expression>> elements;
-    ListLiteral(const std::vector<std::shared_ptr<Expression>>& e) : elements(e) {}
+
+    ListLiteral(const std::vector<std::shared_ptr<Expression>>& e)
+        : elements(e) {}
+
     std::string toString() const override;
 };
 
 class DictLiteral : public Expression {
 public:
-    std::vector<std::pair<std::shared_ptr<Expression>, std::shared_ptr<Expression>>> entries;
-    DictLiteral(const std::vector<std::pair<std::shared_ptr<Expression>, std::shared_ptr<Expression>>>& e) : entries(e) {}
+    std::vector<
+        std::pair<
+            std::shared_ptr<Expression>,
+            std::shared_ptr<Expression>
+        >
+    > entries;
+
+    DictLiteral(
+        const std::vector<
+            std::pair<
+                std::shared_ptr<Expression>,
+                std::shared_ptr<Expression>
+            >
+        >& e
+    ) : entries(e) {}
+
     std::string toString() const override;
 };
 
@@ -122,21 +164,30 @@ class Assignment : public ASTNode {
 public:
     std::string var;
     std::shared_ptr<Expression> expr;
-    Assignment(const std::string& v, std::shared_ptr<Expression> e) : var(v), expr(e) {}
+
+    Assignment(
+        const std::string& v,
+        std::shared_ptr<Expression> e
+    ) : var(v), expr(e) {}
+
     std::string toString() const override;
 };
 
 class PrintStatement : public ASTNode {
 public:
     std::shared_ptr<Expression> expr;
+
     PrintStatement(std::shared_ptr<Expression> e) : expr(e) {}
+
     std::string toString() const override;
 };
 
 class ReturnStatement : public ASTNode {
 public:
     std::shared_ptr<Expression> expr;
+
     ReturnStatement(std::shared_ptr<Expression> e) : expr(e) {}
+
     std::string toString() const override;
 };
 
@@ -146,11 +197,14 @@ public:
     std::vector<std::string> parameters;
     std::vector<std::shared_ptr<Expression>> defaultArgs;
     std::vector<std::shared_ptr<ASTNode>> body;
-    FunctionDef(const std::string& n,
-                const std::vector<std::string>& p,
-                const std::vector<std::shared_ptr<Expression>>& defs,
-                const std::vector<std::shared_ptr<ASTNode>>& b)
-        : name(n), parameters(p), defaultArgs(defs), body(b) {}
+
+    FunctionDef(
+        const std::string& n,
+        const std::vector<std::string>& p,
+        const std::vector<std::shared_ptr<Expression>>& defs,
+        const std::vector<std::shared_ptr<ASTNode>>& b
+    ) : name(n), parameters(p), defaultArgs(defs), body(b) {}
+
     std::string toString() const override;
 };
 
@@ -159,8 +213,13 @@ public:
     std::string name;
     std::string baseClass;
     std::vector<std::shared_ptr<ASTNode>> body;
-    ClassDef(const std::string& n,const std::string& base,const std::vector<std::shared_ptr<ASTNode>>& b)
-        : name(n), baseClass(base), body(b) {}
+
+    ClassDef(
+        const std::string& n,
+        const std::string& base,
+        const std::vector<std::shared_ptr<ASTNode>>& b
+    ) : name(n), baseClass(base), body(b) {}
+
     std::string toString() const override;
 };
 
@@ -169,8 +228,13 @@ public:
     std::string var;
     std::shared_ptr<Expression> iterable;
     std::vector<std::shared_ptr<ASTNode>> body;
-    ForStatement(const std::string& v, std::shared_ptr<Expression> it, const std::vector<std::shared_ptr<ASTNode>>& b)
-        : var(v), iterable(it), body(b) {}
+
+    ForStatement(
+        const std::string& v,
+        std::shared_ptr<Expression> it,
+        const std::vector<std::shared_ptr<ASTNode>>& b
+    ) : var(v), iterable(it), body(b) {}
+
     std::string toString() const override;
 };
 
@@ -179,8 +243,13 @@ public:
     std::vector<std::shared_ptr<ASTNode>> tryBody;
     std::string exceptionName;
     std::vector<std::shared_ptr<ASTNode>> catchBody;
-    TryStatement(const std::vector<std::shared_ptr<ASTNode>>& t, const std::string& ex, const std::vector<std::shared_ptr<ASTNode>>& c)
-        : tryBody(t), exceptionName(ex), catchBody(c) {}
+
+    TryStatement(
+        const std::vector<std::shared_ptr<ASTNode>>& t,
+        const std::string& ex,
+        const std::vector<std::shared_ptr<ASTNode>>& c
+    ) : tryBody(t), exceptionName(ex), catchBody(c) {}
+
     std::string toString() const override;
 };
 
@@ -189,10 +258,13 @@ public:
     std::shared_ptr<Expression> condition;
     std::vector<std::shared_ptr<ASTNode>> body;
     std::vector<std::shared_ptr<ASTNode>> elseBody;
-    IfStatement(std::shared_ptr<Expression> cond,
-                const std::vector<std::shared_ptr<ASTNode>>& b,
-                const std::vector<std::shared_ptr<ASTNode>>& e)
-        : condition(cond), body(b), elseBody(e) {}
+
+    IfStatement(
+        std::shared_ptr<Expression> cond,
+        const std::vector<std::shared_ptr<ASTNode>>& b,
+        const std::vector<std::shared_ptr<ASTNode>>& e
+    ) : condition(cond), body(b), elseBody(e) {}
+
     std::string toString() const override;
 };
 
@@ -200,15 +272,19 @@ class WhileStatement : public ASTNode {
 public:
     std::shared_ptr<Expression> condition;
     std::vector<std::shared_ptr<ASTNode>> body;
-    WhileStatement(std::shared_ptr<Expression> cond,
-                   const std::vector<std::shared_ptr<ASTNode>>& b)
-        : condition(cond), body(b) {}
+
+    WhileStatement(
+        std::shared_ptr<Expression> cond,
+        const std::vector<std::shared_ptr<ASTNode>>& b
+    ) : condition(cond), body(b) {}
+
     std::string toString() const override;
 };
 
 class Program : public ASTNode {
 public:
     std::vector<std::shared_ptr<ASTNode>> statements;
+
     std::string toString() const override;
 };
 
@@ -257,14 +333,38 @@ public:
 class Interpreter {
 private:
     std::map<std::string, RuntimeValue> variables;
+    std::map<std::string, std::shared_ptr<RuntimeObject>> modules;
+    std::filesystem::path currentDirectory;
 
-    RuntimeValue evaluate(const std::shared_ptr<Expression>& expr, std::map<std::string, RuntimeValue>* scope = nullptr);
-    std::optional<RuntimeValue> executeStatement(const std::shared_ptr<ASTNode>& stmt, std::map<std::string, RuntimeValue>& scope);
-    std::map<std::string, RuntimeValue> modules;
-    std::optional<RuntimeValue> executeBlock(const std::vector<std::shared_ptr<ASTNode>>& block, std::map<std::string, RuntimeValue>& scope);
-    RuntimeValue callFunction(const std::shared_ptr<RuntimeFunction>& function, const std::vector<RuntimeValue>& args);
+    RuntimeValue evaluate(
+        const std::shared_ptr<Expression>& expr,
+        std::map<std::string, RuntimeValue>* scope = nullptr
+    );
+
+    std::optional<RuntimeValue> executeStatement(
+        const std::shared_ptr<ASTNode>& stmt,
+        std::map<std::string, RuntimeValue>& scope
+    );
+
+    std::optional<RuntimeValue> executeBlock(
+        const std::vector<std::shared_ptr<ASTNode>>& block,
+        std::map<std::string, RuntimeValue>& scope
+    );
+
+    RuntimeValue callFunction(
+        const std::shared_ptr<RuntimeFunction>& function,
+        const std::vector<RuntimeValue>& args
+    );
+
+    std::shared_ptr<RuntimeObject> loadModule(
+        const std::string& moduleName
+    );
 
 public:
-    void execute(const std::shared_ptr<Program>& program);
+    void execute(
+        const std::shared_ptr<Program>& program,
+        const std::filesystem::path& sourceDirectory = "."
+    );
+
     void printVariables() const;
 };
