@@ -2,48 +2,50 @@ name: Multi-Platform Native Build
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
 
 jobs:
   build:
     name: Build Tekst on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    
+
     strategy:
       fail-fast: false
       matrix:
-        # Runs a parallel matrix build for Ubuntu Linux, macOS, and Windows
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. Setup specific Linux dependencies if running on Ubuntu
-      - name: Install Linux Build Dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake g++
-
-      # 2. Configure the project using the native CMake installation
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-      # 3. Compile the actual executable binary
       - name: Build Project
         run: cmake --build build --config Release
 
-      # 4. package and upload the finished builds as downloadable artifacts
-      - name: Upload Compiled Binary Artifacts
-        uses: actions/artifacts/upload-artifact@v4
+      - name: Upload Linux Binary
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
         with:
-          name: Tekst-${{ matrix.os }}
-          # Finds the compiled executable regardless of the platform extension
-          path: |
-            build/tekst
-            build/tekst.exe
-            build/Release/tekst.exe
-          if-no-files-found: warn
+          name: Tekst-linux
+          path: build/tekst
+          if-no-files-found: error
+
+      - name: Upload macOS Binary
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tekst-macos
+          path: build/tekst
+          if-no-files-found: error
+
+      - name: Upload Windows Binary
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tekst-windows
+          path: build/Release/tekst.exe
+          if-no-files-found: error
