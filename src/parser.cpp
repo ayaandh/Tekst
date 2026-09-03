@@ -1232,25 +1232,95 @@ std::shared_ptr<RuntimeObject> Interpreter::loadModule(
         };
 
         if (moduleName == "math") {
+            native("add", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("add() expects two arguments");
+                return number(number(a.at(0)) + number(a.at(1)));
+            });
+            native("subtract", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("subtract() expects two arguments");
+                return number(number(a.at(0)) - number(a.at(1)));
+            });
+            native("multiply", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("multiply() expects two arguments");
+                return number(number(a.at(0)) * number(a.at(1)));
+            });
+            native("divide", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("divide() expects two arguments");
+                double denominator = number(a.at(1));
+                if (denominator == 0.0) throw std::runtime_error("divide() error: Division by zero");
+                return number(number(a.at(0)) / denominator);
+            });
+            native("modulo", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("modulo() expects two arguments");
+                return number(std::fmod(number(a.at(0)), number(a.at(1))));
+            });
+            native("pow", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("pow() expects two arguments");
+                return number(std::pow(number(a.at(0)), number(a.at(1))));
+            });
             native("sqrt", [number](const auto& a) -> RuntimeValue {
                 if (a.size() != 1) throw std::runtime_error("sqrt() expects one argument");
-                return std::sqrt(number(a.at(0)));
+                return number(std::sqrt(number(a.at(0))));
+            });
+            native("log", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("log() expects one argument");
+                return number(std::log(number(a.at(0))));
+            });
+            native("log10", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("log10() expects one argument");
+                return number(std::log10(number(a.at(0))));
+            });
+            native("exp", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("exp() expects one argument");
+                return number(std::exp(number(a.at(0))));
             });
             native("sin", [number](const auto& a) -> RuntimeValue {
                 if (a.size() != 1) throw std::runtime_error("sin() expects one argument");
-                return std::sin(number(a.at(0)));
+                return number(std::sin(number(a.at(0))));
             });
             native("cos", [number](const auto& a) -> RuntimeValue {
                 if (a.size() != 1) throw std::runtime_error("cos() expects one argument");
-                return std::cos(number(a.at(0)));
+                return number(std::cos(number(a.at(0))));
             });
             native("tan", [number](const auto& a) -> RuntimeValue {
                 if (a.size() != 1) throw std::runtime_error("tan() expects one argument");
-                return std::tan(number(a.at(0)));
+                return number(std::tan(number(a.at(0))));
+            });
+            native("asin", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("asin() expects one argument");
+                return number(std::asin(number(a.at(0))));
+            });
+            native("acos", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("acos() expects one argument");
+                return number(std::acos(number(a.at(0))));
+            });
+            native("atan", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("atan() expects one argument");
+                return number(std::atan(number(a.at(0))));
             });
             native("abs", [number](const auto& a) -> RuntimeValue {
                 if (a.size() != 1) throw std::runtime_error("abs() expects one argument");
-                return std::abs(number(a.at(0)));
+                return number(std::abs(number(a.at(0))));
+            });
+            native("ceil", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("ceil() expects one argument");
+                return number(std::ceil(number(a.at(0))));
+            });
+            native("floor", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("floor() expects one argument");
+                return number(std::floor(number(a.at(0))));
+            });
+            native("round", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 1) throw std::runtime_error("round() expects one argument");
+                return number(std::round(number(a.at(0))));
+            });
+            native("min", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("min() expects two arguments");
+                return number(std::min(number(a.at(0)), number(a.at(1))));
+            });
+            native("max", [number](const auto& a) -> RuntimeValue {
+                if (a.size() != 2) throw std::runtime_error("max() expects two arguments");
+                return number(std::max(number(a.at(0)), number(a.at(1))));
             });
             m->fields["pi"] = 3.141592653589793;
         } else if (moduleName == "random") {
