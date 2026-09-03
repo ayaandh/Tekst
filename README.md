@@ -132,20 +132,6 @@ catch error:
   print("Division by zero!")
 ```
 
-### Importing
-
-main.tekst
-```tekst
-from hello import greet
-
-greet()
-```
-hello.tekst
-```tekst
-fn greet():
-  print("Hello")
-```
-
 ### Built-in Functions
 
 ```tekst
@@ -171,28 +157,22 @@ print(x)
 - GCC/G++ with C++17 support
 - MinGW (on Windows)
 
-### Building (contributors
+### Building
 
 ```bash
-g++ -std=c++17 -O2 -o Tekst.exe src/main.cpp src/lexer.cpp src/parser.cpp -I.
+g++ -std=c++17 -O2 -o executables/Tekst src/main.cpp src/lexer.cpp src/parser.cpp -I.
 ```
 
-### Running 
+### Running
 
-#### Contributors: 
 ```bash
 g++ -std=c++17 -O2 -o tekst src/main.cpp src/lexer.cpp src/parser.cpp -I.
-./tekst script.tekst
+./tekst script.tk
 ```
-#### Running Code:
-``` bash
-Tekst script.tekst
-```
-##### Note the above will work only if added to path
 
 With debug output to see tokens and AST:
 ```bash
-./tekst --debug script.tekst
+./tekst --debug script.tk
 ```
 
 ## Architecture
@@ -213,8 +193,9 @@ proj/
 │   ├── main.cpp          # CLI entry point and file handling
 │   ├── lexer.h/cpp       # Lexical analysis
 │   ├── parser.h/cpp      # Parsing and interpretation
-│   ├── main.tekst        # Sample program
-│   ├── Tekst.exe            # Compiled interpreter binary
+│   └── main.tk        # Sample program
+├── executables/
+│   └── parser            # Compiled interpreter binary
 ├── include/              # Reserved for headers
 ├── tests/                # Reserved for test files
 ├── LICENSE

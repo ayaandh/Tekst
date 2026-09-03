@@ -7,12 +7,15 @@
 #include <optional>
 #include <variant>
 #include <filesystem>
+#include <functional>
 #include "lexer.h"
 
 class ASTNode;
+class Expression;
 
 struct RuntimeObject;
 struct RuntimeFunction;
+struct NativeFunction;
 
 using RuntimeValue = std::variant<
     int,
@@ -20,7 +23,8 @@ using RuntimeValue = std::variant<
     std::string,
     double,
     std::shared_ptr<RuntimeObject>,
-    std::shared_ptr<RuntimeFunction>
+    std::shared_ptr<RuntimeFunction>,
+    std::shared_ptr<NativeFunction>
 >;
 
 struct RuntimeObject {
@@ -28,9 +32,15 @@ struct RuntimeObject {
     std::map<std::string, RuntimeValue> fields;
 };
 
+struct NativeFunction {
+    std::string name;
+    std::function<RuntimeValue(const std::vector<RuntimeValue>&)> call;
+};
+
 struct RuntimeFunction {
     std::string name;
     std::vector<std::string> parameters;
+    std::vector<std::shared_ptr<Expression>> defaultArgs;
     std::vector<std::shared_ptr<ASTNode>> body;
     std::map<std::string, RuntimeValue> closure;
     std::shared_ptr<RuntimeObject> self;
@@ -51,6 +61,13 @@ class NumberLiteral : public Expression {
 public:
     int value;
     NumberLiteral(int v) : value(v) {}
+    std::string toString() const override;
+};
+
+class FloatLiteral : public Expression {
+public:
+    double value;
+    FloatLiteral(double v) : value(v) {}
     std::string toString() const override;
 };
 
@@ -238,6 +255,23 @@ public:
     std::string toString() const override;
 };
 
+class ThrowStatement : public ASTNode {
+public:
+    std::shared_ptr<Expression> expr;
+    ThrowStatement(std::shared_ptr<Expression> e) : expr(e) {}
+    std::string toString() const override;
+};
+
+class BreakStatement : public ASTNode {
+public:
+    std::string toString() const override { return "break"; }
+};
+
+class ContinueStatement : public ASTNode {
+public:
+    std::string toString() const override { return "continue"; }
+};
+
 class TryStatement : public ASTNode {
 public:
     std::vector<std::shared_ptr<ASTNode>> tryBody;
@@ -320,6 +354,9 @@ private:
     std::shared_ptr<ASTNode> parseDeclaration();
     std::shared_ptr<ASTNode> parseForStatement();
     std::shared_ptr<ASTNode> parseTryStatement();
+    std::shared_ptr<ASTNode> parseBreakStatement();
+    std::shared_ptr<ASTNode> parseContinueStatement();
+    std::shared_ptr<ASTNode> parseThrowStatement();
     std::shared_ptr<ASTNode> parseImportStatement();
     std::shared_ptr<ASTNode> parseCallStatement();
     std::shared_ptr<Expression> parseListLiteral();

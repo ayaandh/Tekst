@@ -4,8 +4,17 @@
 #include <sstream>
 #include <fstream>
 #include <functional>
+#include <cctype>
+#include <cmath>
+#include <random>
+#include <chrono>
+#include <thread>
 
 std::string NumberLiteral::toString() const {
+    return std::to_string(value);
+}
+
+std::string FloatLiteral::toString() const {
     return std::to_string(value);
 }
 
@@ -125,6 +134,10 @@ std::string ForStatement::toString() const {
     return s;
 }
 
+std::string ThrowStatement::toString() const {
+    return "throw " + (expr ? expr->toString() : "");
+}
+
 std::string TryStatement::toString() const {
     std::string s = "try:\n";
 
@@ -193,7 +206,10 @@ static std::string valueToString(const RuntimeValue& value) {
     }
 
     if (const auto* v = std::get_if<double>(&value)) {
-        return std::to_string(*v);
+        std::string s = std::to_string(*v);
+        while (!s.empty() && s.back() == '0') s.pop_back();
+        if (!s.empty() && s.back() == '.') s.pop_back();
+        return s;
     }
 
     if (const auto* v = std::get_if<std::shared_ptr<RuntimeFunction>>(&value)) {
@@ -355,6 +371,9 @@ std::shared_ptr<ASTNode> Parser::parseStatement() {
     if (checkKeyword("while")) return parseWhileStatement();
     if (checkKeyword("for")) return parseForStatement();
     if (checkKeyword("try")) return parseTryStatement();
+    if (checkKeyword("throw")) return parseThrowStatement();
+    if (checkKeyword("break")) return parseBreakStatement();
+    if (checkKeyword("continue")) return parseContinueStatement();
     if (checkKeyword("import") || checkKeyword("from")) return parseImportStatement();
     if (checkKeyword("def") || checkKeyword("fn")) return parseFunctionDef();
     if (checkKeyword("class")) return parseClassDef();
@@ -705,6 +724,24 @@ std::shared_ptr<ASTNode> Parser::parseForStatement() {
     );
 }
 
+std::shared_ptr<ASTNode> Parser::parseBreakStatement() {
+    advance();
+    return std::make_shared<BreakStatement>();
+}
+
+std::shared_ptr<ASTNode> Parser::parseContinueStatement() {
+    advance();
+    return std::make_shared<ContinueStatement>();
+}
+
+std::shared_ptr<ASTNode> Parser::parseThrowStatement() {
+    advance();
+    if (check(TokenType::NEWLINE) || check(TokenType::EOF_TOKEN)) {
+        throw std::runtime_error("Expected expression after throw");
+    }
+    return std::make_shared<ThrowStatement>(parseExpression());
+}
+
 std::shared_ptr<ASTNode> Parser::parseTryStatement() {
     advance();
 
@@ -883,7 +920,14 @@ std::shared_ptr<ASTNode> Parser::parseCallStatement() {
 }
 
 std::shared_ptr<Expression> Parser::parseExpression() {
-    return parseComparison();
+    auto left = parseComparison();
+    while (checkKeyword("and") || checkKeyword("or")) {
+        std::string op = current().value;
+        advance();
+        auto right = parseComparison();
+        left = std::make_shared<BinaryOp>(left, op, right);
+    }
+    return left;
 }
 
 std::shared_ptr<Expression> Parser::parseComparison() {
@@ -958,6 +1002,11 @@ std::shared_ptr<Expression> Parser::parseMultiplicative() {
 }
 
 std::shared_ptr<Expression> Parser::parseUnary() {
+    if (checkKeyword("not")) {
+        advance();
+        return std::make_shared<BinaryOp>(std::make_shared<BooleanLiteral>(true), "and", std::make_shared<BinaryOp>(parseUnary(), "==", std::make_shared<BooleanLiteral>(false)));
+    }
+
     if (check(TokenType::PLUS)) {
         advance();
         return parseUnary();
@@ -992,10 +1041,12 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
     }
 
     if (check(TokenType::NUMBER)) {
-        int value = std::stoi(current().value);
+        std::string text = current().value;
         advance();
-
-        return std::make_shared<NumberLiteral>(value);
+        if (text.find('.') != std::string::npos) {
+            return std::make_shared<FloatLiteral>(std::stod(text));
+        }
+        return std::make_shared<NumberLiteral>(std::stoi(text));
     }
 
     if (check(TokenType::STR)) {
@@ -1122,25 +1173,32 @@ RuntimeValue Interpreter::callFunction(
     const std::shared_ptr<RuntimeFunction>& function,
     const std::vector<RuntimeValue>& args
 ) {
-    if (args.size() != function->parameters.size()) {
+    if (args.size() > function->parameters.size()) {
         throw std::runtime_error(
             "Function " + function->name +
-            " expected " +
+            " expected at most " +
             std::to_string(function->parameters.size()) +
             " arguments, got " +
             std::to_string(args.size())
         );
     }
 
-    std::map<std::string, RuntimeValue> localScope =
-        function->closure;
+    std::map<std::string, RuntimeValue> localScope = function->closure;
 
     if (function->self) {
         localScope["self"] = function->self;
     }
 
     for (size_t i = 0; i < function->parameters.size(); ++i) {
-        localScope[function->parameters[i]] = args[i];
+        if (i < args.size()) {
+            localScope[function->parameters[i]] = args[i];
+        } else if (i < function->defaultArgs.size() && function->defaultArgs[i]) {
+            localScope[function->parameters[i]] = evaluate(function->defaultArgs[i], &localScope);
+        } else {
+            throw std::runtime_error(
+                "Function " + function->name + " missing argument: " + function->parameters[i]
+            );
+        }
     }
 
     auto result = executeBlock(function->body, localScope);
@@ -1151,14 +1209,43 @@ RuntimeValue Interpreter::callFunction(
 std::shared_ptr<RuntimeObject> Interpreter::loadModule(
     const std::string& moduleName
 ) {
+    if (moduleName == "math" || moduleName == "random" || moduleName == "time" || moduleName == "os" || moduleName == "fs") {
+        auto m = std::make_shared<RuntimeObject>(); m->className = "__module__";
+        auto number = [](const RuntimeValue& v) { if (auto p=std::get_if<double>(&v)) return *p; if (auto p=std::get_if<int>(&v)) return static_cast<double>(*p); throw std::runtime_error("Expected number"); };
+        auto native = [&](const std::string& n, auto fn) { auto f=std::make_shared<NativeFunction>(); f->name=n; f->call=fn; m->fields[n]=f; };
+        if (moduleName == "math") {
+            native("sqrt", [number](const auto&a)->RuntimeValue{ return std::sqrt(number(a.at(0))); });
+            native("sin", [number](const auto&a)->RuntimeValue{ return std::sin(number(a.at(0))); });
+            native("cos", [number](const auto&a)->RuntimeValue{ return std::cos(number(a.at(0))); });
+            native("tan", [number](const auto&a)->RuntimeValue{ return std::tan(number(a.at(0))); });
+            native("abs", [number](const auto&a)->RuntimeValue{ return std::abs(number(a.at(0))); });
+            m->fields["pi"] = 3.141592653589793;
+        } else if (moduleName == "random") {
+            native("int", [](const auto&a)->RuntimeValue{ static std::mt19937 g(std::random_device{}()); return std::uniform_int_distribution<int>(asInt(a.at(0)),asInt(a.at(1)))(g); });
+            native("float", [](const auto&)->RuntimeValue{ static std::mt19937 g(std::random_device{}()); return std::generate_canonical<double,53>(g); });
+        } else if (moduleName == "time") {
+            native("now", [](const auto&)->RuntimeValue{ return static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count()); });
+            native("sleep", [](const auto&a)->RuntimeValue{ std::this_thread::sleep_for(std::chrono::milliseconds(asInt(a.at(0)))); return 0; });
+        } else if (moduleName == "fs") {
+            native("exists", [](const auto&a)->RuntimeValue{ return std::filesystem::exists(valueToString(a.at(0))); });
+            native("is_file", [](const auto&a)->RuntimeValue{ return std::filesystem::is_regular_file(valueToString(a.at(0))); });
+            native("is_dir", [](const auto&a)->RuntimeValue{ return std::filesystem::is_directory(valueToString(a.at(0))); });
+            native("read", [](const auto&a)->RuntimeValue{ std::ifstream in(valueToString(a.at(0))); if(!in) throw std::runtime_error("Cannot open file"); std::ostringstream ss; ss<<in.rdbuf(); return ss.str(); });
+            native("write", [](const auto&a)->RuntimeValue{ std::ofstream out(valueToString(a.at(0))); if(!out) throw std::runtime_error("Cannot open file"); out<<valueToString(a.at(1)); return 0; });
+        } else {
+            native("cwd", [](const auto&)->RuntimeValue{ return std::filesystem::current_path().string(); });
+            native("listdir", [](const auto& a)->RuntimeValue{ auto r=std::make_shared<RuntimeObject>(); r->className="__list__"; int i=0; for(auto& e:std::filesystem::directory_iterator(valueToString(a.at(0)))) r->fields[std::to_string(i++)]=e.path().filename().string(); r->fields["__size__"]=i; return r; });
+        }
+        modules[moduleName]=m; return m;
+    }
     auto cached = modules.find(moduleName);
 
     if (cached != modules.end()) {
         return cached->second;
     }
 
-    std::filesystem::path path =
-        currentDirectory / (moduleName + ".tekst");
+    std::filesystem::path path = currentDirectory / (moduleName + ".tk");
+    if (!std::filesystem::exists(path)) path = currentDirectory / "lib" / (moduleName + ".tk");
 
     if (!std::filesystem::exists(path)) {
         throw std::runtime_error(
@@ -1212,6 +1299,10 @@ RuntimeValue Interpreter::evaluate(
     std::map<std::string, RuntimeValue>* scope
 ) {
     if (auto num = std::dynamic_pointer_cast<NumberLiteral>(expr)) {
+        return num->value;
+    }
+
+    if (auto num = std::dynamic_pointer_cast<FloatLiteral>(expr)) {
         return num->value;
     }
 
@@ -1478,6 +1569,31 @@ RuntimeValue Interpreter::evaluate(
             );
         }
 
+        if (call->callee == "str") {
+            if (arguments.size() != 1) throw std::runtime_error("str() expects one argument");
+            return valueToString(arguments[0]);
+        }
+
+        if (call->callee == "float") {
+            if (arguments.size() != 1) throw std::runtime_error("float() expects one argument");
+            if (auto p = std::get_if<double>(&arguments[0])) return *p;
+            if (auto p = std::get_if<int>(&arguments[0])) return static_cast<double>(*p);
+            if (auto p = std::get_if<bool>(&arguments[0])) return *p ? 1.0 : 0.0;
+            if (auto p = std::get_if<std::string>(&arguments[0])) return std::stod(*p);
+            throw std::runtime_error("float() expected a number or numeric string");
+        }
+
+        if (call->callee == "type") {
+            if (arguments.size() != 1) throw std::runtime_error("type() expects one argument");
+            if (std::holds_alternative<int>(arguments[0])) return std::string("int");
+            if (std::holds_alternative<double>(arguments[0])) return std::string("float");
+            if (std::holds_alternative<bool>(arguments[0])) return std::string("bool");
+            if (std::holds_alternative<std::string>(arguments[0])) return std::string("string");
+            if (std::holds_alternative<std::shared_ptr<RuntimeFunction>>(arguments[0])) return std::string("function");
+            if (std::holds_alternative<std::shared_ptr<NativeFunction>>(arguments[0])) return std::string("native_function");
+            if (auto p = std::get_if<std::shared_ptr<RuntimeObject>>(&arguments[0])) return (*p)->className;
+        }
+
         if (call->callee == "len") {
             if (arguments.empty()) {
                 throw std::runtime_error(
@@ -1566,6 +1682,36 @@ RuntimeValue Interpreter::evaluate(
                 objectValue = it->second;
             }
 
+            if (const auto* str = std::get_if<std::string>(&objectValue)) {
+                if (methodName == "upper") {
+                    if (!arguments.empty()) throw std::runtime_error("upper() expects no arguments");
+                    std::string r = *str;
+                    for (char& c : r) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                    return r;
+                }
+                if (methodName == "lower") {
+                    if (!arguments.empty()) throw std::runtime_error("lower() expects no arguments");
+                    std::string r = *str;
+                    for (char& c : r) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    return r;
+                }
+                if (methodName == "contains") {
+                    if (arguments.size() != 1) throw std::runtime_error("contains() expects one argument");
+                    return str->find(valueToString(arguments[0])) != std::string::npos;
+                }
+                if (methodName == "replace") {
+                    if (arguments.size() != 2) throw std::runtime_error("replace() expects two arguments");
+                    std::string r = *str, from = valueToString(arguments[0]), to = valueToString(arguments[1]);
+                    if (!from.empty()) { size_t pos = 0; while ((pos = r.find(from, pos)) != std::string::npos) { r.replace(pos, from.size(), to); pos += to.size(); } }
+                    return r;
+                }
+                if (methodName == "trim") {
+                    if (!arguments.empty()) throw std::runtime_error("trim() expects no arguments");
+                    size_t a = str->find_first_not_of(" \t\r\n"), b = str->find_last_not_of(" \t\r\n");
+                    return a == std::string::npos ? std::string{} : str->substr(a, b-a+1);
+                }
+            }
+
             auto obj =
                 std::get_if<std::shared_ptr<RuntimeObject>>(
                     &objectValue
@@ -1577,6 +1723,54 @@ RuntimeValue Interpreter::evaluate(
                 );
             }
 
+            if ((*obj)->className == "__list__") {
+                int size = 0;
+                if (auto it = (*obj)->fields.find("__size__"); it != (*obj)->fields.end()) size = asInt(it->second);
+                if (methodName == "append") {
+                    if (arguments.size() != 1) throw std::runtime_error("append() expects one argument");
+                    (*obj)->fields[std::to_string(size)] = arguments[0];
+                    (*obj)->fields["__size__"] = size + 1;
+                    return 0;
+                }
+                if (methodName == "pop") {
+                    if (size == 0) throw std::runtime_error("pop() from empty list");
+                    auto key = std::to_string(size - 1);
+                    RuntimeValue value = (*obj)->fields.at(key);
+                    (*obj)->fields.erase(key);
+                    (*obj)->fields["__size__"] = size - 1;
+                    return value;
+                }
+                if (methodName == "contains") {
+                    if (arguments.size() != 1) throw std::runtime_error("contains() expects one argument");
+                    for (int i=0;i<size;++i) if (valueToString((*obj)->fields.at(std::to_string(i))) == valueToString(arguments[0])) return true;
+                    return false;
+                }
+                if (methodName == "clear") {
+                    for (int i=0;i<size;++i) (*obj)->fields.erase(std::to_string(i));
+                    (*obj)->fields["__size__"] = 0;
+                    return 0;
+                }
+            }
+
+            if ((*obj)->className == "__dict__") {
+                if (methodName == "keys") {
+                    auto r=std::make_shared<RuntimeObject>(); r->className="__list__"; int i=0;
+                    for (const auto& [k,v] : (*obj)->fields) if(k!="__size__"&&k!="__type__") r->fields[std::to_string(i++)]=k;
+                    r->fields["__size__"]=i; return r;
+                }
+                if (methodName == "values") {
+                    auto r=std::make_shared<RuntimeObject>(); r->className="__list__"; int i=0;
+                    for (const auto& [k,v] : (*obj)->fields) if(k!="__size__"&&k!="__type__") r->fields[std::to_string(i++)]=v;
+                    r->fields["__size__"]=i; return r;
+                }
+                if (methodName == "get") {
+                    if (arguments.empty()) throw std::runtime_error("get() expects a key");
+                    auto key=valueToString(arguments[0]); auto it=(*obj)->fields.find(key);
+                    if(it!=(*obj)->fields.end()) return it->second;
+                    return arguments.size()>1 ? arguments[1] : RuntimeValue{0};
+                }
+            }
+
             auto method =
                 (*obj)->fields.find(methodName);
 
@@ -1586,23 +1780,48 @@ RuntimeValue Interpreter::evaluate(
                 );
             }
 
-            if (const auto* fn =
-                    std::get_if<std::shared_ptr<RuntimeFunction>>(
-                        &method->second)) {
-
+            if (const auto* fn = std::get_if<std::shared_ptr<RuntimeFunction>>(&method->second)) {
                 auto bound = std::make_shared<RuntimeFunction>(**fn);
                 bound->self = *obj;
+                return callFunction(bound, arguments);
+            }
 
-                return callFunction(
-                    bound,
-                    arguments
-                );
+            if (const auto* nf = std::get_if<std::shared_ptr<NativeFunction>>(&method->second)) {
+                return (*nf)->call(arguments);
             }
 
             throw std::runtime_error(
                 "Object member is not callable"
             );
         }
+
+        if (call->callee == "range") {
+            if (arguments.size() < 1 || arguments.size() > 3) throw std::runtime_error("range() expects 1 to 3 arguments");
+            auto toIntArg = [](const RuntimeValue& v){ return asInt(v); };
+            int start = 0, stop = 0, step = 1;
+            if (arguments.size() == 1) stop = toIntArg(arguments[0]);
+            else { start = toIntArg(arguments[0]); stop = toIntArg(arguments[1]); if (arguments.size() == 3) step = toIntArg(arguments[2]); }
+            if (step == 0) throw std::runtime_error("range() step cannot be zero");
+            auto r = std::make_shared<RuntimeObject>(); r->className = "__list__"; int n=0;
+            if (step > 0) for (int x=start; x<stop; x+=step) r->fields[std::to_string(n++)]=x;
+            else for (int x=start; x>stop; x+=step) r->fields[std::to_string(n++)]=x;
+            r->fields["__size__"] = n; return r;
+        }
+
+        auto callNative = [&](const std::string& name) -> std::optional<RuntimeValue> {
+            auto lookup = [&](const std::map<std::string, RuntimeValue>& m) -> const RuntimeValue* {
+                auto it = m.find(name);
+                return it == m.end() ? nullptr : &it->second;
+            };
+            const RuntimeValue* v = scope ? lookup(*scope) : nullptr;
+            if (!v) v = lookup(variables);
+            if (!v) return std::nullopt;
+            if (auto nf = std::get_if<std::shared_ptr<NativeFunction>>(v))
+                return (*nf)->call(arguments);
+            return std::nullopt;
+        };
+
+        if (auto nativeResult = callNative(call->callee)) return *nativeResult;
 
         RuntimeValue functionValue;
 
@@ -1726,45 +1945,34 @@ RuntimeValue Interpreter::evaluate(
         RuntimeValue right =
             evaluate(binop->right, scope);
 
+        auto num = [](const RuntimeValue& v) -> double {
+            if (auto p = std::get_if<int>(&v)) return *p;
+            if (auto p = std::get_if<double>(&v)) return *p;
+            if (auto p = std::get_if<bool>(&v)) return *p ? 1.0 : 0.0;
+            throw std::runtime_error("Expected numeric value");
+        };
+        bool floating = std::holds_alternative<double>(left) || std::holds_alternative<double>(right);
+
         if (binop->op == "+") {
-            if (std::get_if<int>(&left) &&
-                std::get_if<int>(&right)) {
-                return asInt(left) + asInt(right);
-            }
-
-            if (std::get_if<std::string>(&left) &&
-                std::get_if<std::string>(&right)) {
-                return std::get<std::string>(left) +
-                       std::get<std::string>(right);
-            }
-
-            return valueToString(left) +
-                   valueToString(right);
+            if (std::get_if<std::string>(&left) && std::get_if<std::string>(&right))
+                return std::get<std::string>(left) + std::get<std::string>(right);
+            if (floating) return num(left) + num(right);
+            if (std::get_if<int>(&left) && std::get_if<int>(&right)) return asInt(left) + asInt(right);
+            return valueToString(left) + valueToString(right);
         }
-
-        if (binop->op == "-") {
-            return asInt(left) - asInt(right);
-        }
-
-        if (binop->op == "*") {
-            return asInt(left) * asInt(right);
-        }
-
+        if (binop->op == "-") return floating ? RuntimeValue(num(left)-num(right)) : RuntimeValue(asInt(left)-asInt(right));
+        if (binop->op == "*") return floating ? RuntimeValue(num(left)*num(right)) : RuntimeValue(asInt(left)*asInt(right));
         if (binop->op == "/") {
-            int divisor = asInt(right);
-
-            if (divisor == 0) {
-                throw std::runtime_error(
-                    "Division by zero"
-                );
-            }
-
-            return asInt(left) / divisor;
+            double divisor = num(right);
+            if (divisor == 0) throw std::runtime_error("Division by zero");
+            return num(left) / divisor;
         }
-
         if (binop->op == "%") {
+            if (floating) return std::fmod(num(left), num(right));
             return asInt(left) % asInt(right);
         }
+        if (binop->op == "and") return asBool(left) && asBool(right);
+        if (binop->op == "or") return asBool(left) || asBool(right);
 
         if (binop->op == "==") {
             return valueToString(left) ==
@@ -1776,21 +1984,13 @@ RuntimeValue Interpreter::evaluate(
                    valueToString(right);
         }
 
-        if (binop->op == "<") {
-            return asInt(left) < asInt(right);
-        }
+        if (binop->op == "<") return num(left) < num(right);
 
-        if (binop->op == "<=") {
-            return asInt(left) <= asInt(right);
-        }
+        if (binop->op == "<=") return num(left) <= num(right);
 
-        if (binop->op == ">") {
-            return asInt(left) > asInt(right);
-        }
+        if (binop->op == ">") return num(left) > num(right);
 
-        if (binop->op == ">=") {
-            return asInt(left) >= asInt(right);
-        }
+        if (binop->op == ">=") return num(left) >= num(right);
 
         throw std::runtime_error(
             "Unknown operator: " + binop->op
@@ -1800,6 +2000,11 @@ RuntimeValue Interpreter::evaluate(
     throw std::runtime_error(
         "Cannot evaluate expression"
     );
+}
+
+namespace {
+struct BreakSignal {};
+struct ContinueSignal {};
 }
 
 std::optional<RuntimeValue> Interpreter::executeStatement(
@@ -1869,6 +2074,18 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
         return std::nullopt;
     }
 
+    if (auto thr = std::dynamic_pointer_cast<ThrowStatement>(stmt)) {
+        throw std::runtime_error(valueToString(evaluate(thr->expr, &scope)));
+    }
+
+    if (std::dynamic_pointer_cast<BreakStatement>(stmt)) {
+        throw BreakSignal{};
+    }
+
+    if (std::dynamic_pointer_cast<ContinueStatement>(stmt)) {
+        throw ContinueSignal{};
+    }
+
     if (auto ret =
             std::dynamic_pointer_cast<ReturnStatement>(stmt)) {
 
@@ -1886,6 +2103,7 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
 
         fn->name = func->name;
         fn->parameters = func->parameters;
+        fn->defaultArgs = func->defaultArgs;
         fn->body = func->body;
         fn->closure = scope;
 
@@ -1911,6 +2129,7 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
 
                 fn->name = innerFunc->name;
                 fn->parameters = innerFunc->parameters;
+                fn->defaultArgs = innerFunc->defaultArgs;
                 fn->body = innerFunc->body;
                 fn->closure = scope;
 
@@ -1957,14 +2176,13 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
         while (asBool(
             evaluate(whileStmt->condition, &scope)
         )) {
-            auto result =
-                executeBlock(
-                    whileStmt->body,
-                    scope
-                );
-
-            if (result.has_value()) {
-                return result;
+            try {
+                auto result = executeBlock(whileStmt->body, scope);
+                if (result.has_value()) return result;
+            } catch (const ContinueSignal&) {
+                continue;
+            } catch (const BreakSignal&) {
+                break;
             }
         }
 
@@ -1983,9 +2201,7 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
             );
 
         if (!obj || (*obj)->className != "__list__") {
-            throw std::runtime_error(
-                "For loops require a list"
-            );
+            throw std::runtime_error("For loops require an iterable list");
         }
 
         for (size_t i = 0; i < 1000; ++i) {
@@ -2000,14 +2216,13 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
 
             scope[forStmt->var] = it->second;
 
-            auto result =
-                executeBlock(
-                    forStmt->body,
-                    scope
-                );
-
-            if (result.has_value()) {
-                return result;
+            try {
+                auto result = executeBlock(forStmt->body, scope);
+                if (result.has_value()) return result;
+            } catch (const ContinueSignal&) {
+                continue;
+            } catch (const BreakSignal&) {
+                break;
             }
         }
 
@@ -2022,6 +2237,10 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
                 tryStmt->tryBody,
                 scope
             );
+        } catch (const BreakSignal&) {
+            throw;
+        } catch (const ContinueSignal&) {
+            throw;
         } catch (const std::exception&) {
             return executeBlock(
                 tryStmt->catchBody,

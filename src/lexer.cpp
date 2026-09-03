@@ -6,7 +6,7 @@ static bool isKeyword(const std::string& text) {
     static const std::vector<std::string> keywords = {
         "print", "if", "else", "elif", "while", "for", "in",
         "and", "or", "not", "def", "fn", "let", "class",
-        "return", "extends", "try", "catch", "throw",
+        "return", "extends", "try", "catch", "throw", "break", "continue",
         "import", "from", "as", "true", "false"
     };
 
@@ -78,12 +78,24 @@ std::vector<Token> lexer(const std::string& source) {
             continue;
         }
 
-        if (std::isdigit(static_cast<unsigned char>(c))) {
+        if (std::isdigit(static_cast<unsigned char>(c)) ||
+            (c == '.' && i + 1 < source.length() &&
+             std::isdigit(static_cast<unsigned char>(source[i + 1])))) {
             std::string num;
+            bool hasDot = false;
 
-            while (i < source.length() &&
-                   std::isdigit(static_cast<unsigned char>(source[i]))) {
-                num += source[i++];
+            while (i < source.length()) {
+                char n = source[i];
+                if (std::isdigit(static_cast<unsigned char>(n))) {
+                    num += n;
+                    ++i;
+                } else if (n == '.' && !hasDot) {
+                    hasDot = true;
+                    num += n;
+                    ++i;
+                } else {
+                    break;
+                }
             }
 
             tokens.push_back({TokenType::NUMBER, num});
@@ -95,7 +107,21 @@ std::vector<Token> lexer(const std::string& source) {
             std::string str;
 
             while (i < source.length() && source[i] != '"') {
-                str += source[i++];
+                if (source[i] == '\\') {
+                    ++i;
+                    if (i >= source.length()) break;
+                    char e = source[i++];
+                    switch (e) {
+                        case 'n': str += '\n'; break;
+                        case 't': str += '\t'; break;
+                        case 'r': str += '\r'; break;
+                        case '\\': str += '\\'; break;
+                        case '"': str += '"'; break;
+                        default: str += e; break;
+                    }
+                } else {
+                    str += source[i++];
+                }
             }
 
             if (i >= source.length()) {
