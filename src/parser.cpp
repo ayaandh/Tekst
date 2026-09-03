@@ -113,6 +113,11 @@ std::string FunctionDef::toString() const {
         s += parameters[i];
     }
 
+    if (!variadicParameter.empty()) {
+        if (!parameters.empty()) s += ", ";
+        s += "*" + variadicParameter;
+    }
+
     s += "):\n";
 
     for (const auto& stmt : body) {
@@ -559,15 +564,31 @@ std::shared_ptr<ASTNode> Parser::parseFunctionDef() {
 
     std::vector<std::string> params;
     std::vector<std::shared_ptr<Expression>> defaults;
+    std::string variadicParameter;
 
     if (!check(TokenType::RPAREN)) {
         do {
+            bool variadic = match(TokenType::STAR);
+
             if (!check(TokenType::NAME)) {
-                throw std::runtime_error("Expected parameter name");
+                throw std::runtime_error(variadic ? "Expected parameter name after '*'" : "Expected parameter name");
             }
 
             std::string param = current().value;
             advance();
+
+            if (variadic) {
+                if (!variadicParameter.empty()) {
+                    throw std::runtime_error("Only one variadic parameter is allowed");
+                }
+
+                variadicParameter = param;
+
+                if (match(TokenType::COMMA) && !check(TokenType::RPAREN)) {
+                    throw std::runtime_error("Variadic parameter must be the last parameter");
+                }
+                break;
+            }
 
             params.push_back(param);
 
@@ -593,7 +614,8 @@ std::shared_ptr<ASTNode> Parser::parseFunctionDef() {
         name,
         params,
         defaults,
-        parseBlock()
+        parseBlock(),
+        variadicParameter
     );
 }
 
@@ -1140,8 +1162,19 @@ RuntimeValue Interpreter::callFunction(
 ) {
     size_t offset = (function->self && !function->parameters.empty() && function->parameters[0] == "self") ? 1 : 0;
     size_t parameterCount = function->parameters.size() - offset;
-    if (args.size() > parameterCount) {
+
+    if (function->variadicParameter.empty() && args.size() > parameterCount) {
         throw std::runtime_error("Function " + function->name + " expected at most " + std::to_string(parameterCount) + " arguments, got " + std::to_string(args.size()));
+    }
+
+    if (function->variadicParameter.empty() && args.size() < parameterCount) {
+        for (size_t i = offset; i < function->parameters.size(); ++i) {
+            size_t argIndex = i - offset;
+            if (argIndex >= args.size() &&
+                !(i < function->defaultArgs.size() && function->defaultArgs[i])) {
+                throw std::runtime_error("Function " + function->name + " missing argument: " + function->parameters[i]);
+            }
+        }
     }
 
     std::map<std::string, RuntimeValue> localScope = function->closure;
@@ -1156,6 +1189,19 @@ RuntimeValue Interpreter::callFunction(
         } else {
             throw std::runtime_error("Function " + function->name + " missing argument: " + function->parameters[i]);
         }
+    }
+
+    if (!function->variadicParameter.empty()) {
+        auto packed = std::make_shared<RuntimeObject>();
+        packed->className = "__list__";
+
+        size_t start = parameterCount;
+        int size = 0;
+        for (size_t i = start; i < args.size(); ++i) {
+            packed->fields[std::to_string(size++)] = args[i];
+        }
+        packed->fields["__size__"] = size;
+        localScope[function->variadicParameter] = packed;
     }
 
     auto result = executeBlock(function->body, localScope);
@@ -2262,6 +2308,7 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
         fn->name = func->name;
         fn->parameters = func->parameters;
         fn->defaultArgs = func->defaultArgs;
+        fn->variadicParameter = func->variadicParameter;
         fn->body = func->body;
         fn->closure = scope;
         fn->closure[func->name] = fn;
@@ -2289,6 +2336,7 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
                 fn->name = innerFunc->name;
                 fn->parameters = innerFunc->parameters;
                 fn->defaultArgs = innerFunc->defaultArgs;
+                fn->variadicParameter = innerFunc->variadicParameter;
                 fn->body = innerFunc->body;
                 fn->closure = scope;
 

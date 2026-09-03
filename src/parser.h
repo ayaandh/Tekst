@@ -50,6 +50,7 @@ struct RuntimeFunction {
     std::string name;
     std::vector<std::string> parameters;
     std::vector<std::shared_ptr<Expression>> defaultArgs;
+    std::string variadicParameter;
     std::vector<std::shared_ptr<ASTNode>> body;
     std::map<std::string, RuntimeValue> closure;
     std::shared_ptr<RuntimeObject> self;
@@ -235,16 +236,19 @@ public:
     std::string name;
     std::vector<std::string> parameters;
     std::vector<std::shared_ptr<Expression>> defaultArgs;
+    std::string variadicParameter;
     std::vector<std::shared_ptr<ASTNode>> body;
 
     FunctionDef(
         const std::string& n,
         const std::vector<std::string>& p,
         const std::vector<std::shared_ptr<Expression>>& defs,
-        const std::vector<std::shared_ptr<ASTNode>>& b
+        const std::vector<std::shared_ptr<ASTNode>>& b,
+        const std::string& variadic = ""
     ) : name(n),
         parameters(p),
         defaultArgs(defs),
+        variadicParameter(variadic),
         body(b) {}
 
     std::string toString() const override;
