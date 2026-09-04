@@ -14,24 +14,53 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build Project
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --parallel
+
+      - name: Locate Tekst and TK
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            tekst=$(find build -type f -iname "tekst.exe" -print -quit)
+            tk=$(find build -type f -iname "tk.exe" -print -quit)
+          else
+            tekst=$(find build -type f -name "tekst" -perm -111 -print -quit)
+            tk=$(find build -type f -name "tk" -perm -111 -print -quit)
+          fi
+
+          if [[ -z "$tekst" ]]; then
+            echo "Tekst executable not found"
+            find build -type f -print
+            exit 1
+          fi
+
+          if [[ -z "$tk" ]]; then
+            echo "TK executable not found"
+            find build -type f -print
+            exit 1
+          fi
+
+          echo "TEKST_PATH=$tekst" >> "$GITHUB_ENV"
+          echo "TK_PATH=$tk" >> "$GITHUB_ENV"
 
       - name: Upload Linux Tekst
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: Tekst-linux
-          path: build/tekst
+          path: ${{ env.TEKST_PATH }}
           if-no-files-found: error
 
       - name: Upload Linux TK
@@ -39,7 +68,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TK-linux
-          path: build/tk
+          path: ${{ env.TK_PATH }}
           if-no-files-found: error
 
       - name: Upload macOS Tekst
@@ -47,7 +76,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Tekst-macos
-          path: build/tekst
+          path: ${{ env.TEKST_PATH }}
           if-no-files-found: error
 
       - name: Upload macOS TK
@@ -55,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TK-macos
-          path: build/tk
+          path: ${{ env.TK_PATH }}
           if-no-files-found: error
 
       - name: Upload Windows Tekst
@@ -63,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Tekst-windows
-          path: build/Release/tekst.exe
+          path: ${{ env.TEKST_PATH }}
           if-no-files-found: error
 
       - name: Upload Windows TK
@@ -71,5 +100,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TK-windows
-          path: build/Release/tk.exe
+          path: ${{ env.TK_PATH }}
           if-no-files-found: error
