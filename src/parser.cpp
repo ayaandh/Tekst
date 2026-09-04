@@ -11,6 +11,11 @@
 #include <thread>
 #include <cstdlib>
 #include <algorithm>
+#include <limits>
+
+std::string NullLiteral::toString() const {
+    return "null";
+}
 
 std::string NumberLiteral::toString() const {
     return std::to_string(value);
@@ -64,8 +69,16 @@ std::string AttributeAccess::toString() const {
     return object->toString() + "." + attribute;
 }
 
+std::string SliceAccess::toString() const {
+    return object->toString() + "[" + (start ? start->toString() : "") + ":" + (end ? end->toString() : "") + "]";
+}
+
 std::string IndexAccess::toString() const {
     return object->toString() + "[" + index->toString() + "]";
+}
+
+std::string IndexAssignment::toString() const {
+    return object->toString() + "[" + index->toString() + "] " + op + " " + expr->toString();
 }
 
 std::string Assignment::toString() const {
@@ -310,6 +323,44 @@ static bool asBool(const RuntimeValue& value) {
     }
 
     return true;
+}
+
+
+static int levenshteinDistance(const std::string& a, const std::string& b) {
+    std::vector<int> prev(b.size()+1), cur(b.size()+1);
+    for (size_t j=0;j<=b.size();++j) prev[j]=static_cast<int>(j);
+    for (size_t i=1;i<=a.size();++i) {
+        cur[0]=static_cast<int>(i);
+        for (size_t j=1;j<=b.size();++j) {
+            int cost=(std::tolower(static_cast<unsigned char>(a[i-1]))==std::tolower(static_cast<unsigned char>(b[j-1])))?0:1;
+            cur[j]=std::min({prev[j]+1,cur[j-1]+1,prev[j-1]+cost});
+        }
+        prev.swap(cur);
+    }
+    return prev[b.size()];
+}
+
+static std::string suggestName(const std::string& name, const std::map<std::string, RuntimeValue>& scope, const std::map<std::string, RuntimeValue>& globals) {
+    std::string best;
+    int bestDistance=3;
+    auto consider=[&](const std::string& candidate){
+        if (candidate==name) return;
+        int d=levenshteinDistance(name,candidate);
+        if (d<bestDistance) { bestDistance=d; best=candidate; }
+    };
+    for (const auto& [k,v]:scope) consider(k);
+    for (const auto& [k,v]:globals) consider(k);
+    return best;
+}
+
+static std::string withSuggestion(const std::string& message, const std::string& name, const std::map<std::string, RuntimeValue>& scope, const std::map<std::string, RuntimeValue>& globals) {
+    std::string suggestion=suggestName(name,scope,globals);
+    if (suggestion.empty()) return message;
+    return message + "\nDid you mean '" + suggestion + "'?";
+}
+
+static std::string parserError(const Token& token, const std::string& message) {
+    return "error: " + message + " at line " + std::to_string(token.line) + ", column " + std::to_string(token.column);
 }
 
 Parser::Parser(const std::vector<Token>& t)
@@ -667,29 +718,45 @@ std::shared_ptr<ASTNode> Parser::parseReturnStatement() {
 }
 
 std::shared_ptr<ASTNode> Parser::parseAssignment() {
-    std::string varName = current().value;
+    if (!check(TokenType::NAME)) throw std::runtime_error(parserError(current(), "expected assignment target"));
+    std::string name = current().value;
     advance();
 
-    if (match(TokenType::DOT)) {
-        if (!check(TokenType::NAME)) {
-            throw std::runtime_error("Expected attribute name after '.'");
+    if (match(TokenType::LBRACKET)) {
+        auto index = parseExpression();
+        if (!match(TokenType::RBRACKET)) throw std::runtime_error(parserError(current(), "expected ']' after index"));
+        std::string op = "=";
+        if (check(TokenType::ASSIGN) || check(TokenType::PLUS_ASSIGN) || check(TokenType::MINUS_ASSIGN) || check(TokenType::STAR_ASSIGN) || check(TokenType::SLASH_ASSIGN) || check(TokenType::MOD_ASSIGN)) {
+            op = current().value;
+            advance();
+        } else {
+            throw std::runtime_error(parserError(current(), "expected assignment operator after index"));
         }
+        return std::make_shared<IndexAssignment>(std::make_shared<Identifier>(name), index, parseExpression(), op);
+    }
 
+    std::string varName = name;
+    if (match(TokenType::DOT)) {
+        if (!check(TokenType::NAME)) throw std::runtime_error(parserError(current(), "expected attribute name after '.'"));
         varName += "." + current().value;
         advance();
     }
 
-    if (!match(TokenType::ASSIGN)) {
-        throw std::runtime_error("Expected '=' after variable name");
+    std::string op = "=";
+    if (check(TokenType::ASSIGN) || check(TokenType::PLUS_ASSIGN) || check(TokenType::MINUS_ASSIGN) || check(TokenType::STAR_ASSIGN) || check(TokenType::SLASH_ASSIGN) || check(TokenType::MOD_ASSIGN)) {
+        op = current().value;
+        advance();
+    } else {
+        throw std::runtime_error(parserError(current(), "expected assignment operator after variable name"));
     }
 
-    return std::make_shared<Assignment>(
-        varName,
-        parseExpression()
-    );
+    auto right = parseExpression();
+    if (op != "=") {
+        std::string base = op.substr(0, 1);
+        right = std::make_shared<BinaryOp>(std::make_shared<Identifier>(varName), base, right);
+    }
+    return std::make_shared<Assignment>(varName, right);
 }
-
-
 
 std::shared_ptr<ASTNode> Parser::parseDeclaration() {
     if (checkKeyword("let")) {
@@ -991,7 +1058,7 @@ std::shared_ptr<ASTNode> Parser::parseCallStatement() {
 
 std::shared_ptr<Expression> Parser::parseExpression() {
     auto left = parseComparison();
-    while (checkKeyword("and") || checkKeyword("or")) {
+    while (checkKeyword("and") || checkKeyword("or") || check(TokenType::AND) || check(TokenType::OR)) {
         std::string op = current().value;
         advance();
         auto right = parseComparison();
@@ -1002,77 +1069,39 @@ std::shared_ptr<Expression> Parser::parseExpression() {
 
 std::shared_ptr<Expression> Parser::parseComparison() {
     auto left = parseAdditive();
-
-    while (
-        check(TokenType::EQUAL) ||
-        check(TokenType::NOT_EQUAL) ||
-        check(TokenType::LESS) ||
-        check(TokenType::LESS_EQUAL) ||
-        check(TokenType::GREATER) ||
-        check(TokenType::GREATER_EQUAL)
-    ) {
+    while (check(TokenType::EQUAL) || check(TokenType::NOT_EQUAL) || check(TokenType::LESS) || check(TokenType::LESS_EQUAL) || check(TokenType::GREATER) || check(TokenType::GREATER_EQUAL)) {
         std::string op = current().value;
         advance();
-
         auto right = parseAdditive();
-
-        left = std::make_shared<BinaryOp>(
-            left,
-            op,
-            right
-        );
+        left = std::make_shared<BinaryOp>(left, op, right);
     }
-
     return left;
 }
 
 std::shared_ptr<Expression> Parser::parseAdditive() {
     auto left = parseMultiplicative();
-
-    while (
-        check(TokenType::PLUS) ||
-        check(TokenType::MINUS)
-    ) {
+    while (check(TokenType::PLUS) || check(TokenType::MINUS)) {
         std::string op = current().value;
         advance();
-
         auto right = parseMultiplicative();
-
-        left = std::make_shared<BinaryOp>(
-            left,
-            op,
-            right
-        );
+        left = std::make_shared<BinaryOp>(left, op, right);
     }
-
     return left;
 }
 
 std::shared_ptr<Expression> Parser::parseMultiplicative() {
     auto left = parseUnary();
-
-    while (
-        check(TokenType::STAR) ||
-        check(TokenType::SLASH) ||
-        check(TokenType::MOD)
-    ) {
+    while (check(TokenType::STAR) || check(TokenType::SLASH) || check(TokenType::MOD)) {
         std::string op = current().value;
         advance();
-
         auto right = parseUnary();
-
-        left = std::make_shared<BinaryOp>(
-            left,
-            op,
-            right
-        );
+        left = std::make_shared<BinaryOp>(left, op, right);
     }
-
     return left;
 }
 
 std::shared_ptr<Expression> Parser::parseUnary() {
-    if (checkKeyword("not")) {
+    if (checkKeyword("not") || check(TokenType::NOT)) {
         advance();
         return std::make_shared<UnaryOp>("not", parseUnary());
     }
@@ -1093,7 +1122,7 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
     if (check(TokenType::LPAREN)) {
         advance();
         expr = parseExpression();
-        if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after expression");
+        if (!match(TokenType::RPAREN)) throw std::runtime_error(parserError(current(), "expected ')' after expression"));
     } else if (check(TokenType::NUMBER)) {
         std::string text = current().value;
         advance();
@@ -1107,6 +1136,9 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
         bool value = checkKeyword("true");
         advance();
         expr = std::make_shared<BooleanLiteral>(value);
+    } else if (checkKeyword("null")) {
+        advance();
+        expr = std::make_shared<NullLiteral>();
     } else if (check(TokenType::LBRACKET)) {
         expr = parseListLiteral();
     } else if (check(TokenType::LBRACE)) {
@@ -1116,21 +1148,30 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
         advance();
         expr = std::make_shared<Identifier>(name);
     } else {
-        throw std::runtime_error("Unexpected token in expression: '" + current().value + "'");
+        throw std::runtime_error(parserError(current(), "unexpected token '" + current().value + "'"));
     }
 
     while (true) {
         if (match(TokenType::DOT)) {
-            if (!check(TokenType::NAME)) throw std::runtime_error("Expected attribute name after '.'");
+            if (!check(TokenType::NAME)) throw std::runtime_error(parserError(current(), "expected attribute name after '.'"));
             std::string attribute = current().value;
             advance();
             expr = std::make_shared<AttributeAccess>(expr, attribute);
             continue;
         }
         if (match(TokenType::LBRACKET)) {
-            auto indexExpr = parseExpression();
-            if (!match(TokenType::RBRACKET)) throw std::runtime_error("Expected ']' after index");
-            expr = std::make_shared<IndexAccess>(expr, indexExpr);
+            std::shared_ptr<Expression> first;
+            std::shared_ptr<Expression> second;
+            if (!check(TokenType::COLON)) first = parseExpression();
+            if (match(TokenType::COLON)) {
+                if (!check(TokenType::RBRACKET)) second = parseExpression();
+                if (!match(TokenType::RBRACKET)) throw std::runtime_error(parserError(current(), "expected ']' after slice"));
+                expr = std::make_shared<SliceAccess>(expr, first, second);
+            } else {
+                if (!first) throw std::runtime_error(parserError(current(), "expected index or slice"));
+                if (!match(TokenType::RBRACKET)) throw std::runtime_error(parserError(current(), "expected ']' after index"));
+                expr = std::make_shared<IndexAccess>(expr, first);
+            }
             continue;
         }
         if (match(TokenType::LPAREN)) {
@@ -1141,12 +1182,12 @@ std::shared_ptr<Expression> Parser::parsePrimary() {
                     if (!match(TokenType::COMMA)) break;
                 } while (!check(TokenType::RPAREN));
             }
-            if (!match(TokenType::RPAREN)) throw std::runtime_error("Expected ')' after arguments");
+            if (!match(TokenType::RPAREN)) throw std::runtime_error(parserError(current(), "expected ')' after arguments"));
             std::function<std::string(const std::shared_ptr<Expression>&)> buildName =
                 [&](const std::shared_ptr<Expression>& e) -> std::string {
                     if (auto id = std::dynamic_pointer_cast<Identifier>(e)) return id->name;
                     if (auto attr = std::dynamic_pointer_cast<AttributeAccess>(e)) return buildName(attr->object) + "." + attr->attribute;
-                    throw std::runtime_error("Invalid call target");
+                    throw std::runtime_error(parserError(current(), "invalid call target"));
                 };
             expr = std::make_shared<CallExpression>(buildName(expr), args);
             continue;
@@ -1542,6 +1583,10 @@ RuntimeValue Interpreter::evaluate(
     const std::shared_ptr<Expression>& expr,
     std::map<std::string, RuntimeValue>* scope
 ) {
+    if (std::dynamic_pointer_cast<NullLiteral>(expr)) {
+        return std::shared_ptr<RuntimeObject>{};
+    }
+
     if (auto num = std::dynamic_pointer_cast<NumberLiteral>(expr)) {
         return num->value;
     }
@@ -1555,10 +1600,48 @@ RuntimeValue Interpreter::evaluate(
     }
 
     if (auto s = std::dynamic_pointer_cast<StringLiteral>(expr)) {
-        return s->value;
+        std::string out;
+        for (size_t i = 0; i < s->value.size();) {
+            if (s->value[i] == '{') {
+                size_t end = s->value.find('}', i + 1);
+                if (end != std::string::npos) {
+                    std::string name = s->value.substr(i + 1, end - i - 1);
+                    if (!name.empty()) {
+                        bool found = false;
+                        if (scope) {
+                            auto it = scope->find(name);
+                            if (it != scope->end()) { out += valueToString(it->second); found = true; }
+                        }
+                        if (!found) {
+                            auto g = variables.find(name);
+                            if (g != variables.end()) { out += valueToString(g->second); found = true; }
+                        }
+                        if (!found) out += s->value.substr(i, end - i + 1);
+                        i = end + 1; continue;
+                    }
+                }
+            }
+            out += s->value[i++];
+        }
+        return out;
     }
 
     if (auto id = std::dynamic_pointer_cast<Identifier>(expr)) {
+        if (id->name.find('.') != std::string::npos) {
+            size_t dot = id->name.find('.');
+            std::string baseName = id->name.substr(0, dot);
+            std::string attrName = id->name.substr(dot + 1);
+            RuntimeValue baseValue;
+            bool found = false;
+            if (scope) { auto it = scope->find(baseName); if (it != scope->end()) { baseValue = it->second; found = true; } }
+            if (!found) { auto it = variables.find(baseName); if (it != variables.end()) { baseValue = it->second; found = true; } }
+            if (!found) throw std::runtime_error("Undefined object: " + baseName);
+            auto obj = std::get_if<std::shared_ptr<RuntimeObject>>(&baseValue);
+            if (!obj || !*obj) throw std::runtime_error("Attribute access requires an object");
+            auto it = (*obj)->fields.find(attrName);
+            if (it == (*obj)->fields.end()) throw std::runtime_error("Undefined attribute: " + attrName);
+            return it->second;
+        }
         if (scope) {
             auto it = scope->find(id->name);
 
@@ -1570,9 +1653,14 @@ RuntimeValue Interpreter::evaluate(
         auto it = variables.find(id->name);
 
         if (it == variables.end()) {
-            throw std::runtime_error(
-                "Undefined variable: " + id->name
-            );
+            std::string suggestion;
+            size_t best = 1000;
+            for (const auto& [name, value] : variables) {
+                size_t d = name.size() > id->name.size() ? name.size() - id->name.size() : id->name.size() - name.size();
+                if (d < best) { best = d; suggestion = name; }
+            }
+            if (!suggestion.empty() && best <= 2) throw std::runtime_error("Undefined variable: " + id->name + ". Did you mean " + suggestion + "?");
+            throw std::runtime_error("Undefined variable: " + id->name);
         }
 
         return it->second;
@@ -1600,15 +1688,47 @@ RuntimeValue Interpreter::evaluate(
         );
     }
 
+    if (auto slice = std::dynamic_pointer_cast<SliceAccess>(expr)) {
+        auto container = evaluate(slice->object, scope);
+        int size = 0;
+        std::shared_ptr<RuntimeObject> obj;
+        if (auto p = std::get_if<std::shared_ptr<RuntimeObject>>(&container)) obj = *p;
+        if (!obj || obj->className != "__list__") throw std::runtime_error("Slicing requires a list");
+        if (auto it = obj->fields.find("__size__"); it != obj->fields.end()) size = asInt(it->second);
+        int a = slice->start ? asInt(evaluate(slice->start, scope)) : 0;
+        int b = slice->end ? asInt(evaluate(slice->end, scope)) : size;
+        if (a < 0) a += size;
+        if (b < 0) b += size;
+        a = std::max(0, std::min(a, size));
+        b = std::max(0, std::min(b, size));
+        if (b < a) b = a;
+        auto result = std::make_shared<RuntimeObject>();
+        result->className = "__list__";
+        int n = 0;
+        for (int i = a; i < b; ++i) result->fields[std::to_string(n++)] = obj->fields.at(std::to_string(i));
+        result->fields["__size__"] = n;
+        return result;
+    }
+
     if (auto index = std::dynamic_pointer_cast<IndexAccess>(expr)) {
         auto container = evaluate(index->object, scope);
         auto idx = evaluate(index->index, scope);
+
+        if (const auto* str = std::get_if<std::string>(&container)) {
+            int i = asInt(idx);
+            if (i < 0) i += static_cast<int>(str->size());
+            if (i < 0 || i >= static_cast<int>(str->size())) throw std::runtime_error("String index out of range");
+            return std::string(1, (*str)[i]);
+        }
 
         if (const auto* obj =
                 std::get_if<std::shared_ptr<RuntimeObject>>(&container)) {
 
             if ((*obj)->className == "__list__") {
                 int i = asInt(idx);
+                int size = 0;
+                if (auto sizeIt = (*obj)->fields.find("__size__"); sizeIt != (*obj)->fields.end()) size = asInt(sizeIt->second);
+                if (i < 0) i += size;
                 auto it = (*obj)->fields.find(std::to_string(i));
 
                 if (it == (*obj)->fields.end()) {
@@ -1928,9 +2048,7 @@ RuntimeValue Interpreter::evaluate(
                 auto it = variables.find(objectName);
 
                 if (it == variables.end()) {
-                    throw std::runtime_error(
-                        "Undefined object: " + objectName
-                    );
+                    throw std::runtime_error(withSuggestion("Undefined object: " + objectName, objectName, scope ? *scope : std::map<std::string, RuntimeValue>{}, variables));
                 }
 
                 objectValue = it->second;
@@ -1963,6 +2081,22 @@ RuntimeValue Interpreter::evaluate(
                     if (!arguments.empty()) throw std::runtime_error("trim() expects no arguments");
                     size_t a = str->find_first_not_of(" \t\r\n"), b = str->find_last_not_of(" \t\r\n");
                     return a == std::string::npos ? std::string{} : str->substr(a, b-a+1);
+                }
+                if (methodName == "split") {
+                    if (arguments.size() > 1) throw std::runtime_error("split() expects zero or one argument");
+                    std::string delim = arguments.empty() ? " " : valueToString(arguments[0]);
+                    auto r = std::make_shared<RuntimeObject>(); r->className = "__list__"; int n = 0;
+                    size_t start = 0;
+                    while (true) { size_t at = str->find(delim, start); if (at == std::string::npos) { r->fields[std::to_string(n++)] = str->substr(start); break; } r->fields[std::to_string(n++)] = str->substr(start, at-start); start = at + delim.size(); }
+                    r->fields["__size__"] = n; return r;
+                }
+                if (methodName == "join") {
+                    if (arguments.size() != 1) throw std::runtime_error("join() expects one list");
+                    auto p = std::get_if<std::shared_ptr<RuntimeObject>>(&arguments[0]);
+                    if (!p || (*p)->className != "__list__") throw std::runtime_error("join() expects a list");
+                    int n = asInt((*p)->fields["__size__"]); std::string r;
+                    for (int i = 0; i < n; ++i) { if (i) r += *str; r += valueToString((*p)->fields.at(std::to_string(i))); }
+                    return r;
                 }
             }
 
@@ -2029,9 +2163,7 @@ RuntimeValue Interpreter::evaluate(
                 (*obj)->fields.find(methodName);
 
             if (method == (*obj)->fields.end()) {
-                throw std::runtime_error(
-                    "Undefined method: " + methodName
-                );
+                throw std::runtime_error("Undefined method: " + methodName);
             }
 
             if (const auto* fn = std::get_if<std::shared_ptr<RuntimeFunction>>(&method->second)) {
@@ -2047,6 +2179,30 @@ RuntimeValue Interpreter::evaluate(
             throw std::runtime_error(
                 "Object member is not callable"
             );
+        }
+
+        if (call->callee == "sum") {
+            if (arguments.size() != 1) throw std::runtime_error("sum() expects one list");
+            auto p = std::get_if<std::shared_ptr<RuntimeObject>>(&arguments[0]);
+            if (!p || (*p)->className != "__list__") throw std::runtime_error("sum() expects a list");
+            int size = asInt((*p)->fields["__size__"]); double total = 0; bool floating = false;
+            for (int i = 0; i < size; ++i) { auto v = (*p)->fields.at(std::to_string(i)); if (std::holds_alternative<double>(v)) floating = true; total += std::holds_alternative<double>(v) ? std::get<double>(v) : asInt(v); }
+            return floating ? RuntimeValue(total) : RuntimeValue(static_cast<int>(total));
+        }
+
+        if (call->callee == "min" || call->callee == "max") {
+            if (arguments.empty()) throw std::runtime_error(call->callee + "() expects at least one argument");
+            double best = std::numeric_limits<double>::infinity();
+            if (call->callee == "max") best = -std::numeric_limits<double>::infinity();
+            bool floating = false;
+            for (const auto& v : arguments) { double n = std::holds_alternative<double>(v) ? std::get<double>(v) : static_cast<double>(asInt(v)); floating = floating || std::holds_alternative<double>(v); if (call->callee == "min") best = std::min(best,n); else best = std::max(best,n); }
+            return floating ? RuntimeValue(best) : RuntimeValue(static_cast<int>(best));
+        }
+
+        if (call->callee == "abs") {
+            if (arguments.size() != 1) throw std::runtime_error("abs() expects one argument");
+            if (std::holds_alternative<double>(arguments[0])) return std::abs(std::get<double>(arguments[0]));
+            return std::abs(asInt(arguments[0]));
         }
 
         if (call->callee == "range") {
@@ -2088,10 +2244,7 @@ RuntimeValue Interpreter::evaluate(
                 auto global = variables.find(call->callee);
 
                 if (global == variables.end()) {
-                    throw std::runtime_error(
-                        "Undefined function or class: " +
-                        call->callee
-                    );
+                    throw std::runtime_error(withSuggestion("Undefined function or class: " + call->callee, call->callee, scope ? *scope : std::map<std::string, RuntimeValue>{}, variables));
                 }
 
                 functionValue = global->second;
@@ -2100,10 +2253,7 @@ RuntimeValue Interpreter::evaluate(
             auto it = variables.find(call->callee);
 
             if (it == variables.end()) {
-                throw std::runtime_error(
-                    "Undefined function or class: " +
-                    call->callee
-                );
+                throw std::runtime_error(withSuggestion("Undefined function or class: " + call->callee, call->callee, std::map<std::string, RuntimeValue>{}, variables));
             }
 
             functionValue = it->second;
@@ -2131,6 +2281,7 @@ RuntimeValue Interpreter::evaluate(
 
             auto initIt =
                 (*obj)->fields.find("__init__");
+            if (initIt == (*obj)->fields.end()) initIt = (*obj)->fields.find("init");
 
             if (initIt != (*obj)->fields.end()) {
                 if (const auto* initFn =
@@ -2206,11 +2357,11 @@ RuntimeValue Interpreter::evaluate(
 
     if (auto binop = std::dynamic_pointer_cast<BinaryOp>(expr)) {
         RuntimeValue left = evaluate(binop->left, scope);
-        if (binop->op == "and") {
+        if (binop->op == "and" || binop->op == "&&") {
             if (!asBool(left)) return false;
             return asBool(evaluate(binop->right, scope));
         }
-        if (binop->op == "or") {
+        if (binop->op == "or" || binop->op == "||") {
             if (asBool(left)) return true;
             return asBool(evaluate(binop->right, scope));
         }
@@ -2248,14 +2399,21 @@ RuntimeValue Interpreter::evaluate(
             if (divisor == 0) throw std::runtime_error("Modulo by zero");
             return asInt(left) % divisor;
         }
-        if (binop->op == "==") {
-            return valueToString(left) ==
-                   valueToString(right);
-        }
-
-        if (binop->op == "!=") {
-            return valueToString(left) !=
-                   valueToString(right);
+        if (binop->op == "==" || binop->op == "!=") {
+            bool equal = false;
+            if (left.index() == right.index()) {
+                if (auto a = std::get_if<int>(&left)) equal = *a == std::get<int>(right);
+                else if (auto a = std::get_if<bool>(&left)) equal = *a == std::get<bool>(right);
+                else if (auto a = std::get_if<double>(&left)) equal = *a == std::get<double>(right);
+                else if (auto a = std::get_if<std::string>(&left)) equal = *a == std::get<std::string>(right);
+                else if (std::holds_alternative<std::shared_ptr<RuntimeObject>>(left)) equal = std::get<std::shared_ptr<RuntimeObject>>(left) == std::get<std::shared_ptr<RuntimeObject>>(right);
+                else equal = valueToString(left) == valueToString(right);
+            } else if ((std::holds_alternative<int>(left) || std::holds_alternative<double>(left) || std::holds_alternative<bool>(left)) && (std::holds_alternative<int>(right) || std::holds_alternative<double>(right) || std::holds_alternative<bool>(right))) {
+                equal = num(left) == num(right);
+            } else {
+                equal = valueToString(left) == valueToString(right);
+            }
+            return binop->op == "==" ? equal : !equal;
         }
 
         if (binop->op == "<") return num(left) < num(right);
@@ -2285,6 +2443,37 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
     const std::shared_ptr<ASTNode>& stmt,
     std::map<std::string, RuntimeValue>& scope
 ) {
+    if (auto ia = std::dynamic_pointer_cast<IndexAssignment>(stmt)) {
+        auto container = evaluate(ia->object, &scope);
+        auto idx = evaluate(ia->index, &scope);
+        auto value = evaluate(ia->expr, &scope);
+        auto obj = std::get_if<std::shared_ptr<RuntimeObject>>(&container);
+        if (!obj || !*obj) throw std::runtime_error("Index assignment requires a list or dictionary");
+        if ((*obj)->className == "__list__") {
+            int i = asInt(idx); int size = asInt((*obj)->fields["__size__"]);
+            if (i < 0) i += size;
+            if (i < 0 || i >= size) throw std::runtime_error("List index out of range");
+            if (ia->op != "=") {
+                std::string op = ia->op.substr(0,1);
+                value = evaluate(std::make_shared<BinaryOp>(std::make_shared<IndexAccess>(ia->object, ia->index), op, ia->expr), &scope);
+            }
+            (*obj)->fields[std::to_string(i)] = value;
+            return std::nullopt;
+        }
+        if ((*obj)->className == "__dict__") {
+            std::string key = valueToString(idx);
+            if (ia->op != "=") {
+                auto old = (*obj)->fields.find(key);
+                if (old == (*obj)->fields.end()) throw std::runtime_error("Key not found: " + key);
+                std::string op = ia->op.substr(0,1);
+                value = evaluate(std::make_shared<BinaryOp>(std::make_shared<IndexAccess>(ia->object, ia->index), op, ia->expr), &scope);
+            }
+            (*obj)->fields[key] = value;
+            return std::nullopt;
+        }
+        throw std::runtime_error("Index assignment requires a list or dictionary");
+    }
+
     if (auto assign =
             std::dynamic_pointer_cast<Assignment>(stmt)) {
 
@@ -2303,9 +2492,7 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
             auto it = scope.find(objectName);
 
             if (it == scope.end()) {
-                throw std::runtime_error(
-                    "Undefined object: " + objectName
-                );
+                throw std::runtime_error(withSuggestion("Undefined object: " + objectName, objectName, std::map<std::string, RuntimeValue>{}, variables));
             }
 
             auto obj =
@@ -2395,6 +2582,14 @@ std::optional<RuntimeValue> Interpreter::executeStatement(
             std::make_shared<RuntimeObject>();
 
         classObject->className = cls->name;
+
+        if (!cls->baseClass.empty()) {
+            auto baseIt = scope.find(cls->baseClass);
+            if (baseIt == scope.end()) throw std::runtime_error("Undefined base class: " + cls->baseClass);
+            auto base = std::get_if<std::shared_ptr<RuntimeObject>>(&baseIt->second);
+            if (!base) throw std::runtime_error("Base type is not a class: " + cls->baseClass);
+            classObject->fields = (*base)->fields;
+        }
 
         for (const auto& child : cls->body) {
             if (auto innerFunc =

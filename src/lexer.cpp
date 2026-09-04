@@ -7,7 +7,7 @@ static bool isKeyword(const std::string& text) {
         "print", "if", "else", "elif", "while", "for", "in",
         "and", "or", "not", "def", "fn", "let", "class",
         "return", "extends", "try", "catch", "throw", "break", "continue",
-        "import", "from", "as", "true", "false"
+        "import", "from", "as", "true", "false", "null"
     };
 
     for (const auto& kw : keywords) {
@@ -24,6 +24,8 @@ std::vector<Token> lexer(const std::string& source) {
     size_t i = 0;
     bool atLineStart = true;
     int currentLineIndent = 0;
+    int line = 1;
+    int column = 1;
 
     while (i < source.length()) {
         char c = source[i];
@@ -32,6 +34,8 @@ std::vector<Token> lexer(const std::string& source) {
             if (c == '\n') {
                 tokens.push_back({TokenType::NEWLINE, "\n"});
                 ++i;
+                ++line;
+                column = 1;
                 currentLineIndent = 0;
                 continue;
             }
@@ -39,6 +43,7 @@ std::vector<Token> lexer(const std::string& source) {
             if (c == ' ' || c == '\t') {
                 currentLineIndent += c == '\t' ? 4 : 1;
                 ++i;
+                ++column;
                 continue;
             }
 
@@ -62,12 +67,15 @@ std::vector<Token> lexer(const std::string& source) {
             }
 
             atLineStart = false;
+            column = currentLineIndent + 1;
             continue;
         }
 
         if (c == '\n') {
             tokens.push_back({TokenType::NEWLINE, "\n"});
             ++i;
+            ++line;
+            column = 1;
             atLineStart = true;
             currentLineIndent = 0;
             continue;
@@ -146,7 +154,8 @@ std::vector<Token> lexer(const std::string& source) {
         }
 
         if (c == '!') {
-            throw std::runtime_error("Unexpected ! token");
+            tokens.push_back({TokenType::NOT, "!", line, column});
+            ++i; ++column; continue;
         }
 
         if (c == '<') {
@@ -172,39 +181,72 @@ std::vector<Token> lexer(const std::string& source) {
         }
 
         if (c == '=') {
-            tokens.push_back({TokenType::ASSIGN, "="});
+            tokens.push_back({TokenType::ASSIGN, "=", line, column});
             ++i;
             continue;
+        }
+
+        if (c == '+' && i + 1 < source.length() && source[i + 1] == '=') {
+            tokens.push_back({TokenType::PLUS_ASSIGN, "+=", line, column});
+            i += 2; column += 2; continue;
         }
 
         if (c == '+') {
-            tokens.push_back({TokenType::PLUS, "+"});
+            tokens.push_back({TokenType::PLUS, "+", line, column});
             ++i;
             continue;
+        }
+
+        if (c == '-' && i + 1 < source.length() && source[i + 1] == '=') {
+            tokens.push_back({TokenType::MINUS_ASSIGN, "-=", line, column});
+            i += 2; column += 2; continue;
         }
 
         if (c == '-') {
-            tokens.push_back({TokenType::MINUS, "-"});
+            tokens.push_back({TokenType::MINUS, "-", line, column});
             ++i;
             continue;
+        }
+
+        if (c == '*' && i + 1 < source.length() && source[i + 1] == '=') {
+            tokens.push_back({TokenType::STAR_ASSIGN, "*=", line, column});
+            i += 2; column += 2; continue;
         }
 
         if (c == '*') {
-            tokens.push_back({TokenType::STAR, "*"});
+            tokens.push_back({TokenType::STAR, "*", line, column});
             ++i;
             continue;
+        }
+
+        if (c == '/' && i + 1 < source.length() && source[i + 1] == '=') {
+            tokens.push_back({TokenType::SLASH_ASSIGN, "/=", line, column});
+            i += 2; column += 2; continue;
         }
 
         if (c == '/') {
-            tokens.push_back({TokenType::SLASH, "/"});
+            tokens.push_back({TokenType::SLASH, "/", line, column});
             ++i;
             continue;
         }
 
+        if (c == '%' && i + 1 < source.length() && source[i + 1] == '=') {
+            tokens.push_back({TokenType::MOD_ASSIGN, "%=", line, column});
+            i += 2; column += 2; continue;
+        }
+
         if (c == '%') {
-            tokens.push_back({TokenType::MOD, "%"});
+            tokens.push_back({TokenType::MOD, "%", line, column});
             ++i;
             continue;
+        }
+
+        if (c == '&' && i + 1 < source.length() && source[i + 1] == '&') {
+            tokens.push_back({TokenType::AND, "&&", line, column}); i += 2; column += 2; continue;
+        }
+
+        if (c == '|' && i + 1 < source.length() && source[i + 1] == '|') {
+            tokens.push_back({TokenType::OR, "||", line, column}); i += 2; column += 2; continue;
         }
 
         if (c == '(') {

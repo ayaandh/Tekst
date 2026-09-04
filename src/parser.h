@@ -56,6 +56,11 @@ struct RuntimeFunction {
     std::shared_ptr<RuntimeObject> self;
 };
 
+class NullLiteral : public Expression {
+public:
+    std::string toString() const override;
+};
+
 class NumberLiteral : public Expression {
 public:
     int value;
@@ -153,6 +158,18 @@ public:
     std::string toString() const override;
 };
 
+class SliceAccess : public Expression {
+public:
+    std::shared_ptr<Expression> object;
+    std::shared_ptr<Expression> start;
+    std::shared_ptr<Expression> end;
+
+    SliceAccess(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> s, std::shared_ptr<Expression> e)
+        : object(obj), start(s), end(e) {}
+
+    std::string toString() const override;
+};
+
 class IndexAccess : public Expression {
 public:
     std::shared_ptr<Expression> object;
@@ -194,6 +211,19 @@ public:
             >
         >& e
     ) : entries(e) {}
+
+    std::string toString() const override;
+};
+
+class IndexAssignment : public ASTNode {
+public:
+    std::shared_ptr<Expression> object;
+    std::shared_ptr<Expression> index;
+    std::shared_ptr<Expression> expr;
+    std::string op;
+
+    IndexAssignment(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> idx, std::shared_ptr<Expression> e, const std::string& o = "=")
+        : object(obj), index(idx), expr(e), op(o) {}
 
     std::string toString() const override;
 };
@@ -384,6 +414,8 @@ private:
     std::shared_ptr<Expression> parseAdditive();
     std::shared_ptr<Expression> parseComparison();
     std::shared_ptr<Expression> parseExpression();
+    std::shared_ptr<Expression> parseLogical();
+    std::shared_ptr<Expression> parsePostfix();
 
     std::shared_ptr<ASTNode> parseStatement();
     std::vector<std::shared_ptr<ASTNode>> parseBlock();

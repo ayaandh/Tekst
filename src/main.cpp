@@ -78,6 +78,9 @@ static void printTkHelp() {
     std::cout << "  tk list                    List installed packages\n";
     std::cout << "  tk search <query>          Search the package registry\n";
     std::cout << "  tk update                  Reinstall dependencies\n";
+    std::cout << "  tk run <file>              Run a Tekst program\n";
+    std::cout << "  tk repl                    Start the interactive REPL\n";
+    std::cout << "  tk version                 Show Tekst version\n";
 }
 
 static fs::path findProjectFile(const fs::path& start, const std::string& name) {
@@ -226,6 +229,43 @@ static void tkSearch(const std::string& query) {
     if (!found) std::cout << "No packages found.\n";
 }
 
+static void printTokens(const std::vector<Token>& tokens);
+
+static int runFile(const fs::path& input, bool debug = false) {
+    fs::path path = fs::absolute(input);
+    if (!fs::exists(path)) throw std::runtime_error("Could not open file: " + path.string());
+    std::string source = readFile(path);
+    auto tokens = lexer(source);
+    if (debug) printTokens(tokens);
+    Parser parser(tokens);
+    auto program = parser.parse();
+    if (debug) std::cout << "=== PARSED PROGRAM ===\n" << program->toString() << '\n';
+    Interpreter interpreter;
+    interpreter.execute(program, path.parent_path());
+    return 0;
+}
+
+static int runRepl() {
+    std::cout << "Tekst 0.2.0 REPL\n";
+    Interpreter interpreter;
+    while (true) {
+        std::cout << ">>> " << std::flush;
+        std::string line;
+        if (!std::getline(std::cin, line)) break;
+        if (line == "exit" || line == "quit") break;
+        if (line.empty()) continue;
+        try {
+            auto tokens = lexer(line + "\n");
+            Parser parser(tokens);
+            auto program = parser.parse();
+            interpreter.execute(program, fs::current_path());
+        } catch (const std::exception& e) {
+            std::cout << "Error: " << e.what() << '\n';
+        }
+    }
+    return 0;
+}
+
 static int runTk(const std::vector<std::string>& args) {
     if (args.empty() || args[0] == "help" || args[0] == "--help" || args[0] == "-h") { printTkHelp(); return 0; }
     const std::string& command = args[0];
@@ -236,6 +276,9 @@ static int runTk(const std::vector<std::string>& args) {
     else if (command == "list") tkList();
     else if (command == "search") tkSearch(args.size() >= 2 ? args[1] : "");
     else if (command == "update") tkInstall("");
+    else if (command == "version") std::cout << "Tekst 0.2.0\n";
+    else if (command == "repl") return runRepl();
+    else if (command == "run" && args.size() >= 2) return runFile(args[1]);
     else { printTkHelp(); return 1; }
     return 0;
 }
@@ -275,6 +318,15 @@ static void printTokens(const std::vector<Token>& tokens) {
             case TokenType::NEWLINE: std::cout << "NEWLINE"; break;
             case TokenType::EOF_TOKEN: std::cout << "EOF"; break;
             case TokenType::BACKSLASH: std::cout << "BACKSLASH"; break;
+            case TokenType::PLUS_ASSIGN: std::cout << "PLUS_ASSIGN"; break;
+            case TokenType::MINUS_ASSIGN: std::cout << "MINUS_ASSIGN"; break;
+            case TokenType::STAR_ASSIGN: std::cout << "STAR_ASSIGN"; break;
+            case TokenType::SLASH_ASSIGN: std::cout << "SLASH_ASSIGN"; break;
+            case TokenType::MOD_ASSIGN: std::cout << "MOD_ASSIGN"; break;
+            case TokenType::AND: std::cout << "AND"; break;
+            case TokenType::OR: std::cout << "OR"; break;
+            case TokenType::NOT: std::cout << "NOT"; break;
+            case TokenType::NULL_TOKEN: std::cout << "NULL"; break;
         }
         std::cout << " -> '" << token.value << "'\n";
     }

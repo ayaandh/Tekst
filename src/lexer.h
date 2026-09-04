@@ -33,12 +33,23 @@ enum class TokenType {
     DEDENT,
     NEWLINE,
     EOF_TOKEN,
-    BACKSLASH
+    BACKSLASH,
+    PLUS_ASSIGN,
+    MINUS_ASSIGN,
+    STAR_ASSIGN,
+    SLASH_ASSIGN,
+    MOD_ASSIGN,
+    AND,
+    OR,
+    NOT,
+    NULL_TOKEN
 };
 
 struct Token {
     TokenType type;
     std::string value;
+    int line = 1;
+    int column = 1;
 };
 
 std::vector<Token> lexer(const std::string& source);
