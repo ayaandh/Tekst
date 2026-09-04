@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build Tekst on ${{ matrix.os }}
+    name: Build Tekst and TK on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -26,7 +26,7 @@ jobs:
       - name: Build Project
         run: cmake --build build --config Release
 
-      - name: Upload Linux Binary
+      - name: Upload Linux Tekst
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
@@ -34,7 +34,15 @@ jobs:
           path: build/tekst
           if-no-files-found: error
 
-      - name: Upload macOS Binary
+      - name: Upload Linux TK
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TK-linux
+          path: build/tk
+          if-no-files-found: error
+
+      - name: Upload macOS Tekst
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
@@ -42,10 +50,26 @@ jobs:
           path: build/tekst
           if-no-files-found: error
 
-      - name: Upload Windows Binary
+      - name: Upload macOS TK
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TK-macos
+          path: build/tk
+          if-no-files-found: error
+
+      - name: Upload Windows Tekst
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: Tekst-windows
           path: build/Release/tekst.exe
+          if-no-files-found: error
+
+      - name: Upload Windows TK
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TK-windows
+          path: build/Release/tk.exe
           if-no-files-found: error
