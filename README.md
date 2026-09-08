@@ -1,278 +1,270 @@
-# Tekst: A Simplified App-Oriented Language Interpreter
+# Tekst
 
-A lightweight C++17 interpreter for a custom simplified programming language designed for building functional applications with clean, minimal syntax.
+Tekst is a lightweight C++17 interpreter for a simple, app-oriented programming language with Python-inspired syntax, indentation-based blocks, functions, classes, collections, exceptions, modules, and a built-in project/package workflow.
 
-## About Tekst
+## Features
 
-Tekst is an educational interpreter that implements core programming concepts in a straightforward manner. It uses Python-inspired syntax but with a more concise, streamlined design suitable for rapid prototyping and learning.
+- Variables: integers, doubles, booleans, strings, lists, dictionaries, null
+- Arithmetic: `+`, `-`, `*`, `/`, `%`
+- Comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- Logic: `and`, `or`, `not`, `&&`, `||`, `!`
+- Assignment: `=`, `+=`, `-=`, `*=`, `/=`, `%=`
+- Control flow: `if`, `elif`, `else`, `while`, `for ... in ...`
+- Loop control: `break`, `continue`
+- Functions: `fn` and `def`, default arguments, variadic arguments, return values, closures
+- Classes: constructors, fields, methods, inheritance with `extends`, method overriding
+- Objects: attribute access, method calls, object instances
+- Collections: list and dictionary literals, indexing, index assignment, negative indexes, slicing
+- Strings: interpolation, indexing, slicing, `upper`, `lower`, `contains`, `replace`, `trim`, `split`, `join`
+- Built-ins: `print`, `input`, `int`, `float`, `str`, `bool`, `len`, `sum`, `min`, `max`, `abs`, `range`
+- File utilities: `read`, `write`, `exists`, `is_file`, `is_dir`, `listdir`, `cwd`
+- Math utilities: `add`, `subtract`, `multiply`, `divide`, `modulo`, `pow`, `sqrt`, `log`, `log10`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `ceil`, `floor`, `round`
+- Error handling: `try`, `catch`, `throw`
+- Modules: `import`, `from`, `as`
+- Package management: `tk init`, `tk new`, `tk install`, `tk remove`, `tk list`, `tk search`, `tk update`
+- REPL: `tk repl`
+- Debug mode: `--debug`
+- Helpful runtime suggestions for likely misspellings
+- Line and column information for parser errors
 
-### Core Features
+## Syntax
 
-- **Variables & Types**: integers, booleans, strings, lists, dictionaries, doubles
-- **Control Flow**: `if`/`elif`/`else`, `while`, `for ... in ...`
-- **Functions**: named functions with parameters and default arguments
-- **Classes & Objects**: class definitions with inheritance via `extends`, methods, constructors
-- **Error Handling**: `try`/`catch` blocks for exception handling
-- **Collections**: list and dictionary literals with indexing support
-- **Method Calls**: object-oriented method invocation
-- **Built-ins**: `print()`, `input()`, `int()`, `str()`, `bool()`, `float()`, `len()`
-- **Modules**: basic import system scaffolding
-
-## Language Syntax
-
-### Variables & Assignment
+### Variables
 
 ```tekst
 x = 42
 name = "Alice"
-is_active = True
-numbers = [1, 2, 3, 4, 5]
+active = true
+nothing = null
+numbers = [1, 2, 3]
 config = {"host": "localhost", "port": 8080}
 ```
 
 ### Functions
 
-Define functions with the `fn` or `def` keyword:
-
 ```tekst
 fn greet(name):
-  print("Hello, " + name)
+    return "Hello " + name
 
-fn add(a, b):
-  print(a + b)
+fn add(a, b = 0):
+    return a + b
 
-greet("World")
-add(5, 3)
+fn total(*values):
+    result = 0
+    for value in values:
+        result += value
+    return result
+
+print(greet("World"))
+print(add(5, 3))
+print(total(1, 2, 3, 4))
 ```
 
-Functions with default arguments:
+### Strings
 
 ```tekst
-fn welcome(name, greeting = "Hello"):
-  print(greeting + ", " + name)
+name = "Tekst"
+print("Hello {name}")
+print(name.upper())
+print(name.lower())
+print(name.contains("eks"))
+print(name.replace("Tekst", "Language"))
+print("  hello  ".trim())
+print("a,b,c".split(","))
+print(",".join(["a", "b", "c"]))
 ```
 
-### Classes & Objects
+### Lists
 
 ```tekst
-class WashingMachine:
-  def __init__(self, name):
-    self.name = name
-  
-  def beep():
-    print("Beeeeeeeeeeeeeeeeeeeeeeeeep")
-
-WashingMachine mach
-mach.beep()
+numbers = [10, 20, 30, 40]
+print(numbers[0])
+print(numbers[-1])
+print(numbers[1:3])
+numbers[0] += 5
+numbers.append(50)
+print(numbers)
 ```
 
-Classes can inherit from other classes:
+### Dictionaries
 
 ```tekst
-class Animal:
-  def __init__(self, name):
-    self.name = name
-  
-  def speak():
-    print("Some sound")
-
-class Dog extends Animal:
-  def speak():
-    print("Woof!")
+person = {"name": "Bob", "age": 30}
+print(person["name"])
+person["age"] += 1
+print(person.keys())
+print(person.values())
+print(person.get("email", "unknown"))
 ```
 
 ### Control Flow
 
-**if/elif/else:**
 ```tekst
-x = 10
-if x > 15:
-  print("Large")
-elif x > 5:
-  print("Medium")
+score = 85
+
+if score >= 90:
+    print("A")
+elif score >= 80:
+    print("B")
 else:
-  print("Small")
+    print("C")
+
+for n in range(5):
+    if n == 3:
+        continue
+    print(n)
 ```
 
-**while loops:**
+### Classes
+
 ```tekst
-count = 0
-while count < 5:
-  print(count)
-  count = count + 1
+class Animal:
+    fn init(name):
+        self.name = name
+
+    fn speak():
+        return "animal"
+
+class Dog extends Animal:
+    fn speak():
+        return "woof"
+
+pet = Dog("Max")
+print(pet.name)
+print(pet.speak())
 ```
 
-**for loops (iterate over lists):**
-```tekst
-items = [1, 2, 3, 4, 5]
-for item in items:
-  print(item)
-```
-
-### Collections
-
-**Lists:**
-```tekst
-numbers = [10, 20, 30, 40]
-print(numbers[0])
-```
-
-**Dictionaries:**
-```tekst
-person = {"name": "Bob", "age": 30}
-print(person["name"])
-```
+Constructors can also be written as `__init__` for compatibility with Python-style examples.
 
 ### Error Handling
 
 ```tekst
 try:
-  x = 1 / 0
+    value = 10 / 0
 catch error:
-  print("Division by zero!")
+    print("Something went wrong")
 ```
 
-### Built-in Functions
+### Modules
 
 ```tekst
-name = input("Name: ")
-age = int(input("Age: "))
-print("Hello, " + name)
-print(age >= 18)
-print(str(age))
-print(len("Tekst"))
+import math
 ```
 
-### Print Statement
+Modules are loaded from project, local, and package paths supported by the interpreter.
 
-```tekst
-print("Hello, World!")
-x = 42
-print(x)
+## Helpful Errors
+
+Tekst reports parser errors with their location and provides suggestions for likely misspellings.
+
+```text
+error: expected assignment operator after variable name at line 3, column 9
 ```
 
-## Build & Run
+Runtime name errors can suggest a nearby valid name:
 
-### Requirements
-- GCC/G++ with C++17 support
-- MinGW (on Windows)
-
-### Building
-
-```bash
-g++ -std=c++17 -O2 -o executables/Tekst src/main.cpp src/lexer.cpp src/parser.cpp -I.
+```text
+Undefined function or class: pritn
+Did you mean 'print'?
 ```
 
-### Running
+## Build
+
+Requirements:
+
+- GCC or G++ with C++17 support
+- MinGW on Windows
+
+Build the interpreter:
 
 ```bash
 g++ -std=c++17 -O2 -o tekst src/main.cpp src/lexer.cpp src/parser.cpp -I.
-./tekst script.tk
 ```
 
-With debug output to see tokens and AST:
+Run a program:
+
 ```bash
-./tekst --debug script.tk
+./tekst src/main.tk
 ```
 
-## Architecture
+Debug tokens and the parsed AST:
 
-The interpreter follows a classic pipeline:
+```bash
+./tekst --debug src/main.tk
+```
 
-1. **Lexer** (`src/lexer.cpp`): Tokenizes source code into a stream of tokens
-2. **Parser** (`src/parser.cpp`): Builds an Abstract Syntax Tree (AST) and executes it directly
-3. **Interpreter**: Evaluates the AST and manages runtime state
+## CLI
 
-No compilation to bytecode or intermediate representations—the interpreter executes AST nodes directly for simplicity.
+```text
+tk init
+tk new <name>
+tk install
+tk install <package>
+tk remove <package>
+tk list
+tk search <query>
+tk update
+tk run <file>
+tk repl
+tk version
+tk help
+```
 
 ## Project Structure
 
-```
+```text
 proj/
 ├── src/
-│   ├── main.cpp          # CLI entry point and file handling
-│   ├── lexer.h/cpp       # Lexical analysis
-│   ├── parser.h/cpp      # Parsing and interpretation
-│   └── main.tk        # Sample program
+│   ├── main.cpp
+│   ├── lexer.h
+│   ├── lexer.cpp
+│   ├── parser.h
+│   ├── parser.cpp
+│   └── main.tk
 ├── executables/
-│   └── parser            # Compiled interpreter binary
-├── include/              # Reserved for headers
-├── tests/                # Reserved for test files
+├── include/
+├── tests/
+├── tekst.toml
+├── tk.lock
 ├── LICENSE
 └── README.md
 ```
 
-## Example Programs
+## Architecture
 
-### Hello World
+Tekst uses a direct AST interpreter pipeline:
 
-```tekst
-print("Hello, World!")
-```
+1. The lexer converts source text into tokens.
+2. The parser converts tokens into an AST.
+3. The interpreter evaluates the AST directly.
+4. The CLI provides file execution, debugging, project management, packages, and the REPL.
 
-### Simple Calculator
+The project does not require a bytecode compiler or virtual machine.
 
-```tekst
-fn add(a, b):
-  print(a + b)
-
-fn multiply(a, b):
-  print(a * b)
-
-add(10, 5)
-multiply(3, 7)
-```
-
-### Working with Lists
-
-```tekst
-numbers = [1, 2, 3, 4, 5]
-
-for num in numbers:
-  print(num * 2)
-```
-
-### Working with Objects
+## Example Application
 
 ```tekst
 class Counter:
-  def __init__(self, start):
-    self.value = start
-  
-  def increment():
-    self.value = self.value + 1
-  
-  def display():
-    print(self.value)
+    fn init(start = 0):
+        self.value = start
 
-Counter counter
-counter.increment()
-counter.display()
+    fn increment(amount = 1):
+        self.value += amount
+        return self.value
+
+counter = Counter(10)
+
+for i in range(3):
+    print(counter.increment())
+
+name = "Tekst"
+print("Running {name}")
 ```
-
-## Limitations & Future Directions
-
-This interpreter implements a core subset of functionality suitable for educational purposes and simple scripts. Current limitations include:
-
-- No lambda functions or closures (yet)
-- Limited module/import implementation
-- No file I/O (yet)
-- No networking (yet)
-- No full standard library beyond the built-ins listed above
-- Single-threaded execution
-
-Future versions may add:
-- Full module system with a standard library
-- File and network I/O
-- More comprehensive object semantics
-- Lambda expressions
-- Decorators
-- Compilation mode (compile to bytecode or C++)
 
 ## License
 
-See LICENSE file for details.
+See `LICENSE` for details.
 
 ## Contributing
 
-This project is actively developed. Contributions, suggestions, and bug reports are welcome!
+Tekst is actively developed. Contributions, suggestions, tests, and bug reports are welcome.
