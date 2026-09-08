@@ -10,8 +10,17 @@ add_executable(tekst
     src/main.cpp
     src/lexer.cpp
     src/parser.cpp
+    src/ast.cpp
+    src/interpreter.cpp
+    src/environment.cpp
+    src/value.cpp
+    src/function.cpp
+    src/class.cpp
+    src/builtins.cpp
+    src/file_io.cpp
+    src/errors.cpp
+    src/repl.cpp
 )
-
 target_include_directories(tekst PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
