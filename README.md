@@ -1,4 +1,4 @@
-# Tekst
+# Tekst | The Programming Language Guide
 
 Tekst is a lightweight C++17 interpreter for a simple, app-oriented programming language with Python-inspired syntax, indentation-based blocks, functions, classes, collections, exceptions, modules, and a built-in project/package workflow.
 
