@@ -7,6 +7,8 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <sstream>
+
 RuntimeValue Interpreter::callFunction(
     const std::shared_ptr<RuntimeFunction>& function,
     const std::vector<RuntimeValue>& args
