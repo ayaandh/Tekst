@@ -1,0 +1,98 @@
+stages:
+  - build
+
+build-linux:
+  stage: build
+  image: ubuntu:latest
+  before_script:
+    - apt-get update
+    - apt-get install -y cmake g++ make
+  script:
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    - cmake --build build --config Release --parallel
+    - |
+      if [ -f build/bin/Release/tekst ]; then
+        cp build/bin/Release/tekst build/tekst
+      elif [ -f build/bin/tekst ]; then
+        cp build/bin/tekst build/tekst
+      else
+        echo "tekst was not found"
+        exit 1
+      fi
+    - |
+      if [ -f build/bin/Release/tk ]; then
+        cp build/bin/Release/tk build/tk
+      elif [ -f build/bin/tk ]; then
+        cp build/bin/tk build/tk
+      else
+        echo "tk was not found"
+        exit 1
+      fi
+  artifacts:
+    name: "Tekst-linux"
+    paths:
+      - build/tekst
+      - build/tk
+    expire_in: 30 days
+
+build-macos:
+  stage: build
+  tags:
+    - macos
+  script:
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    - cmake --build build --config Release --parallel
+    - |
+      if [ -f build/bin/Release/tekst ]; then
+        cp build/bin/Release/tekst build/tekst
+      elif [ -f build/bin/tekst ]; then
+        cp build/bin/tekst build/tekst
+      else
+        echo "tekst was not found"
+        exit 1
+      fi
+    - |
+      if [ -f build/bin/Release/tk ]; then
+        cp build/bin/Release/tk build/tk
+      elif [ -f build/bin/tk ]; then
+        cp build/bin/tk build/tk
+      else
+        echo "tk was not found"
+        exit 1
+      fi
+  artifacts:
+    name: "Tekst-macos"
+    paths:
+      - build/tekst
+      - build/tk
+    expire_in: 30 days
+
+build-windows:
+  stage: build
+  tags:
+    - windows
+  script:
+    - cmake -S . -B build
+    - cmake --build build --config Release --parallel
+    - |
+      $tekst = Get-ChildItem -Path build -Recurse -Filter "tekst.exe" | Select-Object -First 1
+      $tk = Get-ChildItem -Path build -Recurse -Filter "tk.exe" | Select-Object -First 1
+
+      if (-not $tekst) {
+        Write-Error "tekst.exe was not found"
+        exit 1
+      }
+
+      if (-not $tk) {
+        Write-Error "tk.exe was not found"
+        exit 1
+      }
+
+      Copy-Item $tekst.FullName build/tekst.exe
+      Copy-Item $tk.FullName build/tk.exe
+  artifacts:
+    name: "Tekst-windows"
+    paths:
+      - build/tekst.exe
+      - build/tk.exe
+    expire_in: 30 days
