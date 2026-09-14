@@ -5,6 +5,8 @@ stages:
 sync-github:
   stage: sync
   image: alpine:latest
+  tags:
+    - gitlab-org
   before_script:
     - apk add --no-cache git
   script:
@@ -16,6 +18,8 @@ sync-github:
 build-linux:
   stage: build
   image: ubuntu:24.04
+  tags:
+    - gitlab-org
   before_script:
     - apt-get update
     - apt-get install -y cmake g++ make
@@ -35,7 +39,7 @@ build-linux:
       if [ -f build/bin/Release/tk ]; then
         cp build/bin/Release/tk build/tk
       elif [ -f build/bin/tk ]; then
-        cp build/bin/tk build/tk
+        cp build/bin/tekst build/tk
       else
         echo "tk was not found"
         exit 1
