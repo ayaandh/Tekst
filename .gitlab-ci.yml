@@ -1,11 +1,166 @@
-pages:
-  stage: deploy
+stages:
+  - sync
+  - build
+  - collect
+
+sync-github:
+  stage: sync
+  image: alpine:latest
+  tags:
+    - gitlab-org
+
+  before_script:
+    - apk add --no-cache git
+
   script:
-    - mkdir .public
-    - cp -r * .public
-    - mv .public public
+    - git config --global user.name "GitLab CI"
+    - git config --global user.email "gitlab-ci@users.noreply.github.com"
+    - git remote add github "https://x-access-token:${GITHUB_TOKEN}@github.com/ayaandh/tekst.git"
+    - git push github HEAD:main --force
+
+
+build-linux:
+  stage: build
+  image: ubuntu:24.04
+  tags:
+    - gitlab-org
+
+  before_script:
+    - apt-get update
+    - apt-get install -y cmake g++ make
+
+  script:
+    - rm -rf build
+
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    - cmake --build build --config Release --parallel
+
+    - |
+      if [ ! -f build/tekst ]; then
+        echo "tekst was not found"
+        exit 1
+      fi
+
   artifacts:
+    name: "Tekst-linux"
     paths:
-      - public
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+      - build/tekst
+    expire_in: 30 days
+
+
+collect-github:
+  stage: collect
+  image: alpine:latest
+  tags:
+    - gitlab-org
+
+  before_script:
+    - apk add --no-cache curl jq unzip
+
+  script:
+    - |
+      echo "Triggering GitHub Actions..."
+
+      curl -fsSL -X POST \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/ayaandh/tekst/actions/workflows/build.yml/dispatches" \
+        -d "{\"ref\":\"main\"}"
+
+      echo "GitHub Actions triggered"
+
+      sleep 10
+
+      for i in $(seq 1 60); do
+        RUNS=$(curl -fsSL \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/ayaandh/tekst/actions/runs?event=workflow_dispatch&per_page=10")
+
+        RUN_ID=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.name == "Native Builds") | .id' | head -n 1)
+
+        if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+          echo "Found GitHub Actions run: $RUN_ID"
+          break
+        fi
+
+        echo "Waiting for GitHub Actions run..."
+        sleep 5
+      done
+
+      if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+        echo "GitHub Actions run was not found"
+        exit 1
+      fi
+
+      for i in $(seq 1 120); do
+        RUN=$(curl -fsSL \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/ayaandh/tekst/actions/runs/${RUN_ID}")
+
+        STATUS=$(echo "$RUN" | jq -r '.status')
+        CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
+
+        echo "GitHub status: ${STATUS}, conclusion: ${CONCLUSION}"
+
+        if [ "$STATUS" = "completed" ]; then
+          break
+        fi
+
+        sleep 10
+      done
+
+      if [ "$STATUS" != "completed" ]; then
+        echo "GitHub Actions did not finish"
+        exit 1
+      fi
+
+      if [ "$CONCLUSION" != "success" ]; then
+        echo "GitHub Actions failed"
+        exit 1
+      fi
+
+      mkdir -p artifacts
+
+      curl -fsSL \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/ayaandh/tekst/actions/runs/${RUN_ID}/artifacts" \
+        -o artifacts.json
+
+      for ARTIFACT in Tekst-macos TK-macos Tekst-windows TK-windows; do
+        ID=$(jq -r --arg NAME "$ARTIFACT" '.artifacts[] | select(.name == $NAME) | .id' artifacts.json | head -n 1)
+
+        if [ -z "$ID" ] || [ "$ID" = "null" ]; then
+          echo "Artifact not found: $ARTIFACT"
+          exit 1
+        fi
+
+        echo "Downloading $ARTIFACT..."
+
+        curl -fsSL \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/ayaandh/tekst/actions/artifacts/${ID}/zip" \
+          -o "artifacts/${ARTIFACT}.zip"
+
+        mkdir -p "artifacts/${ARTIFACT}"
+        unzip -q "artifacts/${ARTIFACT}.zip" -d "artifacts/${ARTIFACT}"
+      done
+
+      echo "All GitHub artifacts downloaded"
+
+  artifacts:
+    name: "Tekst-TK-macos-windows"
+    paths:
+      - artifacts/Tekst-macos/
+      - artifacts/TK-macos/
+      - artifacts/Tekst-windows/
+      - artifacts/TK-windows/
+    expire_in: 30 days
