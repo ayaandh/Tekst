@@ -13,7 +13,11 @@ namespace fs = std::filesystem;
 static const std::string REGISTRY_OWNER = "ayaandh";
 static const std::string REGISTRY_REPO = "tkpackages";
 static const std::string REGISTRY =
-    "https://github.com/" + REGISTRY_OWNER + "/" + REGISTRY_REPO;
+    "https://gitlab.com/" + REGISTRY_OWNER + "/" + REGISTRY_REPO;
+
+static const std::string GITLAB_API =
+    "https://gitlab.com/api/v4/projects/" +
+    REGISTRY_OWNER + "%2F" + REGISTRY_REPO;
 
 std::string localAppData() {
     const char* value = std::getenv("LOCALAPPDATA");
@@ -63,7 +67,8 @@ bool downloadRegistry(const fs::path& destination) {
     fs::remove_all(temp);
 
     std::string url =
-        REGISTRY + "/archive/refs/heads/main.zip";
+        REGISTRY + "/-/archive/main/" +
+        REGISTRY_REPO + "-main.zip";
 
     std::string download =
         "powershell -NoProfile -ExecutionPolicy Bypass -Command "
@@ -112,17 +117,18 @@ bool downloadRegistry(const fs::path& destination) {
 
 bool packageExistsInRegistry(const std::string& name) {
     std::string url =
-        "https://api.github.com/repos/" +
-        REGISTRY_OWNER + "/" +
-        REGISTRY_REPO +
-        "/contents/" + name;
+        GITLAB_API +
+        "/repository/tree?path=" +
+        name +
+        "&ref=main";
 
     std::string command =
         "powershell -NoProfile -ExecutionPolicy Bypass -Command "
         "\"try { "
-        "$r=Invoke-WebRequest -Uri '" + url +
-        "' -Headers @{ 'User-Agent'='tk' } -UseBasicParsing; "
-        "if ($r.StatusCode -eq 200) { exit 0 } else { exit 1 } "
+        "$r=Invoke-RestMethod "
+        "-Uri '" + url + "' "
+        "-Headers @{ 'User-Agent'='tk' }; "
+        "if ($r.Count -gt 0) { exit 0 } else { exit 1 } "
         "} catch { exit 1 }\"";
 
     return std::system(command.c_str()) == 0;
@@ -283,10 +289,8 @@ void listPackages() {
 
 void searchPackages(const std::string& query) {
     std::string url =
-        "https://api.github.com/repos/" +
-        REGISTRY_OWNER + "/" +
-        REGISTRY_REPO +
-        "/git/trees/main?recursive=1";
+        GITLAB_API +
+        "/repository/tree?ref=main&recursive=true";
 
     std::string command =
         "powershell -NoProfile -ExecutionPolicy Bypass -Command "
@@ -294,13 +298,13 @@ void searchPackages(const std::string& query) {
         "$r=Invoke-RestMethod "
         "-Uri '" + url + "' "
         "-Headers @{ 'User-Agent'='tk' }; "
-        "$r.tree | "
+        "$r | "
         "Where-Object { "
         "$_.type -eq 'tree' -and "
         "$_.path -notlike '*/*' -and "
-        "$_.path -like '*" + query + "*' "
+        "$_.name -like '*" + query + "*' "
         "} | "
-        "Select-Object -ExpandProperty path "
+        "Select-Object -ExpandProperty name "
         "} catch { exit 1 }\"";
 
     if (std::system(command.c_str()) != 0) {
