@@ -1,12 +1,12 @@
 # Build directories
 build/
 
-# CMake generated files
+# CMake
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-Makefile
 CTestTestfile.cmake
+Makefile
 
 # Compiled files
 *.exe
@@ -17,7 +17,7 @@ CTestTestfile.cmake
 *.so
 *.dylib
 
-# IDE files
+# IDE
 .vs/
 .vscode/
 .idea/
@@ -26,6 +26,6 @@ CTestTestfile.cmake
 *.swp
 *.swo
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
