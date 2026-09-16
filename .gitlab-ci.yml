@@ -1,5 +1,6 @@
 stages:
   - build
+  - test
 
 build-linux:
   stage: build
@@ -34,6 +35,19 @@ build-linux:
       - build/tekst
       - build/tk
     expire_in: 30 days
+
+test-linux:
+  stage: test
+  image: ubuntu:latest
+  needs:
+    - build-linux
+  script:
+    - chmod +x build/tekst
+    - chmod +x build/tk
+
+    # Put your actual tests here
+    - ./build/tekst --version
+    - ./build/tk --version
 
 github:
   stage: build
