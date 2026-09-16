@@ -1,0 +1,106 @@
+name: Multi-Platform Native Build
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Tekst and TK on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Find Linux and macOS executables
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          test -f build/bin/Release/tekst && cp build/bin/Release/tekst build/tekst || test -f build/bin/tekst && cp build/bin/tekst build/tekst
+          test -f build/bin/Release/tk && cp build/bin/Release/tk build/tk || test -f build/bin/tk && cp build/bin/tk build/tk
+
+      - name: Find Windows executables
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $tekst = Get-ChildItem -Path build -Recurse -Filter "tekst.exe" | Select-Object -First 1
+          $tk = Get-ChildItem -Path build -Recurse -Filter "tk.exe" | Select-Object -First 1
+
+          if (-not $tekst) {
+            Write-Error "tekst.exe was not found"
+            exit 1
+          }
+
+          if (-not $tk) {
+            Write-Error "tk.exe was not found"
+            exit 1
+          }
+
+          Copy-Item $tekst.FullName build/tekst.exe
+          Copy-Item $tk.FullName build/tk.exe
+
+      - name: Upload Linux Tekst
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tekst-linux
+          path: build/tekst
+          if-no-files-found: error
+
+      - name: Upload Linux TK
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TK-linux
+          path: build/tk
+          if-no-files-found: error
+
+      - name: Upload macOS Tekst
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tekst-macos
+          path: build/tekst
+          if-no-files-found: error
+
+      - name: Upload macOS TK
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TK-macos
+          path: build/tk
+          if-no-files-found: error
+
+      - name: Upload Windows Tekst
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tekst-windows
+          path: build/tekst.exe
+          if-no-files-found: error
+
+      - name: Upload Windows TK
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TK-windows
+          path: build/tk.exe
+          if-no-files-found: error
