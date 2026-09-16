@@ -1,0 +1,10 @@
+^C:\PROJECTS\C++\TEKST-LLVM-COMPILER-V4\TEKST\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Projects/C++/Tekst-LLVM-compiler-v4/tekst -BC:/Projects/C++/Tekst-LLVM-compiler-v4/tekst/build --check-stamp-file C:/Projects/C++/Tekst-LLVM-compiler-v4/tekst/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

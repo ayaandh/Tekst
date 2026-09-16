@@ -1,0 +1,12 @@
+x = 41
+p = &x
+*p = 42
+print(*p)
+
+mem = alloc(8)
+store_int(mem, 123456)
+print(load_int(mem))
+q = mem + 4
+store_int(q, 99)
+print(load_int(q))
+free(mem)

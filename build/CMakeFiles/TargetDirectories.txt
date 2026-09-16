@@ -1,0 +1,4 @@
+C:/Projects/C++/Tekst-LLVM-compiler-v4/tekst/build/CMakeFiles/tekst.dir
+C:/Projects/C++/Tekst-LLVM-compiler-v4/tekst/build/CMakeFiles/INSTALL.dir
+C:/Projects/C++/Tekst-LLVM-compiler-v4/tekst/build/CMakeFiles/ALL_BUILD.dir
+C:/Projects/C++/Tekst-LLVM-compiler-v4/tekst/build/CMakeFiles/ZERO_CHECK.dir
