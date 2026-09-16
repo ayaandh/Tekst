@@ -34,8 +34,20 @@ jobs:
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          test -f build/bin/Release/tekst && cp build/bin/Release/tekst build/tekst || test -f build/bin/tekst && cp build/bin/tekst build/tekst
-          test -f build/bin/Release/tk && cp build/bin/Release/tk build/tk || test -f build/bin/tk && cp build/bin/tk build/tk
+          test -f build/tekst || {
+            echo "tekst executable not found"
+            find build -maxdepth 3 -type f -print
+            exit 1
+          }
+
+          test -f build/tk || {
+            echo "tk executable not found"
+            find build -maxdepth 3 -type f -print
+            exit 1
+          }
+
+          chmod +x build/tekst
+          chmod +x build/tk
 
       - name: Find Windows executables
         if: matrix.os == 'windows-latest'
