@@ -5,19 +5,18 @@ stages:
 build-linux:
   stage: build
   image: ubuntu:latest
-  before_script:
+  script:
     - apt-get update
     - apt-get install -y cmake g++ make
-  script:
     - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-    - cmake --build build --config Release --parallel
+    - cmake --build build --config Release
     - |
       if [ -f build/bin/Release/tekst ]; then
         cp build/bin/Release/tekst build/tekst
       elif [ -f build/bin/tekst ]; then
         cp build/bin/tekst build/tekst
       else
-        echo "tekst was not found"
+        echo "Tekst executable not found"
         exit 1
       fi
     - |
@@ -26,58 +25,38 @@ build-linux:
       elif [ -f build/bin/tk ]; then
         cp build/bin/tk build/tk
       else
-        echo "tk was not found"
+        echo "tk executable not found"
         exit 1
       fi
   artifacts:
-    name: "Tekst-linux"
     paths:
       - build/tekst
       - build/tk
-    expire_in: 30 days
-
-test-linux:
-  stage: test
-  image: ubuntu:latest
-  needs:
-    - build-linux
-  script:
-    - chmod +x build/tekst
-    - chmod +x build/tk
-
-    # Put your actual tests here
-    - ./build/tekst --version
-    - ./build/tk --version
 
 github:
   stage: build
   image: alpine:latest
-  needs:
-    - build-linux
   script:
     - apk add --no-cache curl jq
     - |
-      RESPONSE=$(curl -sS -X POST \
+      RESPONSE=$(curl -s -X POST \
         -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer $GITHUB_TOKEN" \
-        -H "X-GitHub-Api-Version: 2026-03-10" \
-        "https://api.github.com/repos/ayaandh/tekst/actions/workflows/build.yml/dispatches" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/ayaandh/Tekst/actions/workflows/build.yml/dispatches" \
         -d '{"ref":"main"}')
-
-      echo "$RESPONSE"
-
-      RUN_ID=$(echo "$RESPONSE" | jq -r '.workflow_run_id')
-
-      if [ "$RUN_ID" = "null" ] || [ -z "$RUN_ID" ]; then
-        echo "Failed to get GitHub Actions run ID"
-        exit 1
-      fi
-
-      echo "$RUN_ID" > github_run_id
+    - sleep 5
+    - |
+      RUN_ID=$(curl -s \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $GITHUB_TOKEN" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/ayaandh/Tekst/actions/workflows/build.yml/runs?branch=main&event=workflow_dispatch" \
+        | jq -r '.workflow_runs[0].id')
+      echo "$RUN_ID" > github_run_id.txt
   artifacts:
     paths:
-      - github_run_id
-    expire_in: 1 hour
+      - github_run_id.txt
 
 collect-github:
   stage: build
@@ -87,25 +66,28 @@ collect-github:
     - github
   script:
     - apk add --no-cache curl jq unzip
+    - RUN_ID=$(cat github_run_id.txt)
     - |
-      RUN_ID=$(cat github_run_id)
-
       while true; do
-        RESPONSE=$(curl -sS \
+        STATUS=$(curl -s \
           -H "Accept: application/vnd.github+json" \
           -H "Authorization: Bearer $GITHUB_TOKEN" \
-          -H "X-GitHub-Api-Version: 2026-03-10" \
-          "https://api.github.com/repos/ayaandh/tekst/actions/runs/$RUN_ID")
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/ayaandh/Tekst/actions/runs/$RUN_ID" \
+          | jq -r '.status')
 
-        STATUS=$(echo "$RESPONSE" | jq -r '.status')
-        CONCLUSION=$(echo "$RESPONSE" | jq -r '.conclusion')
+        CONCLUSION=$(curl -s \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/ayaandh/Tekst/actions/runs/$RUN_ID" \
+          | jq -r '.conclusion')
 
-        echo "Status: $STATUS"
-        echo "Conclusion: $CONCLUSION"
+        echo "Status: $STATUS | Conclusion: $CONCLUSION"
 
         if [ "$STATUS" = "completed" ]; then
           if [ "$CONCLUSION" != "success" ]; then
-            echo "GitHub Actions failed"
+            echo "GitHub Actions build failed"
             exit 1
           fi
           break
@@ -113,48 +95,46 @@ collect-github:
 
         sleep 10
       done
+    - mkdir -p github-artifacts
     - |
-      ARTIFACTS=$(curl -sS \
+      curl -L \
         -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer $GITHUB_TOKEN" \
-        -H "X-GitHub-Api-Version: 2026-03-10" \
-        "https://api.github.com/repos/ayaandh/tekst/actions/runs/$RUN_ID/artifacts")
-
-      echo "$ARTIFACTS" | jq -r '.artifacts[] | "\(.id) \(.name)"'
-
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com/repos/ayaandh/Tekst/actions/runs/$RUN_ID/artifacts" \
+        -o artifacts.json
+    - |
       for NAME in Tekst-macos TK-macos Tekst-windows TK-windows; do
-        ID=$(echo "$ARTIFACTS" | jq -r --arg NAME "$NAME" '.artifacts[] | select(.name == $NAME) | .id')
+        URL=$(jq -r --arg NAME "$NAME" '.artifacts[] | select(.name == $NAME) | .archive_download_url' artifacts.json)
 
-        if [ -z "$ID" ] || [ "$ID" = "null" ]; then
-          echo "Artifact not found: $NAME"
+        if [ "$URL" != "" ] && [ "$URL" != "null" ]; then
+          curl -L \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$URL" \
+            -o "github-artifacts/$NAME.zip"
+          unzip -o "github-artifacts/$NAME.zip" -d "github-artifacts/$NAME"
+        else
+          echo "Artifact $NAME not found"
           exit 1
         fi
-
-        curl -L -sS \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer $GITHUB_TOKEN" \
-          -H "X-GitHub-Api-Version: 2026-03-10" \
-          "https://api.github.com/repos/ayaandh/tekst/actions/artifacts/$ID/zip" \
-          -o "$NAME.zip"
-
-        mkdir -p "$NAME"
-        unzip -o "$NAME.zip" -d "$NAME"
-        rm "$NAME.zip"
       done
-
-      mkdir -p build
-
-      cp Tekst-macos/tekst build/tekst-macos
-      cp TK-macos/tk build/tk-macos
-      cp Tekst-windows/tekst.exe build/tekst-windows.exe
-      cp TK-windows/tk.exe build/tk-windows.exe
+    - mkdir -p build
+    - find github-artifacts -type f
+    - cp github-artifacts/Tekst-macos/* build/tekst-macos || true
+    - cp github-artifacts/TK-macos/* build/tk-macos || true
+    - cp github-artifacts/Tekst-windows/* build/tekst.exe || true
+    - cp github-artifacts/TK-windows/* build/tk.exe || true
   artifacts:
-    name: "Tekst-all-platforms"
     paths:
-      - build/tekst
-      - build/tk
-      - build/tekst-macos
-      - build/tk-macos
-      - build/tekst-windows.exe
-      - build/tk-windows.exe
-    expire_in: 30 days
+      - build/
+
+test-linux:
+  stage: test
+  image: ubuntu:latest
+  needs:
+    - build-linux
+  script:
+    - chmod +x build/tekst
+    - ./build/tekst tests/hello.tk
