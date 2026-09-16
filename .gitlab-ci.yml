@@ -21,34 +21,32 @@ build-linux:
   image: ubuntu:24.04
   tags:
     - gitlab-org
+
   before_script:
     - apt-get update
     - apt-get install -y cmake g++ make
+
   script:
     - rm -f build/CMakeCache.txt
     - rm -rf build/CMakeFiles
     - rm -f build/cmake_install.cmake
     - rm -f build/Makefile
+
     - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
     - cmake --build build --config Release --parallel
+
     - |
-      if [ -f build/bin/Release/tekst ]; then
-        cp build/bin/Release/tekst build/tekst
-      elif [ -f build/bin/tekst ]; then
-        cp build/bin/tekst build/tekst
-      else
+      if [ ! -f build/tekst ]; then
         echo "tekst was not found"
         exit 1
       fi
+
     - |
-      if [ -f build/bin/Release/tk ]; then
-        cp build/bin/Release/tk build/tk
-      elif [ -f build/bin/tk ]; then
-        cp build/bin/tk build/tk
-      else
+      if [ ! -f build/tk ]; then
         echo "tk was not found"
         exit 1
       fi
+
   artifacts:
     name: "Tekst-TK-linux"
     paths:
