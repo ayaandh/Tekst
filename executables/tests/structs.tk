@@ -1,0 +1,6 @@
+struct Point:
+    x: int = 1
+    y: int = 2
+p = Point()
+print(p.x)
+print(p.y)
