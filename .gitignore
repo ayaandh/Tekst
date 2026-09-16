@@ -1,42 +1,31 @@
-# Build output
+# Build directories
 build/
 
-# CMake
+# CMake generated files
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
+CTestTestfile.cmake
 
-# Visual Studio
-.vs/
-*.sln
-*.vcxproj
-*.vcxproj.filters
-*.vcxproj.user
-
-# Compiled binaries
+# Compiled files
 *.exe
-*.out
 *.o
 *.obj
+*.out
 *.dll
 *.so
 *.dylib
 
-# IDE/editor files
-.idea/
+# IDE files
+.vs/
 .vscode/
+.idea/
+
+# Vim
 *.swp
 *.swo
 
 # OS files
 .DS_Store
 Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-
-# Test/build artifacts
-Testing/
-CTestTestfile.cmake
