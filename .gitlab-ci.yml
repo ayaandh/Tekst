@@ -12,11 +12,17 @@ sync-github:
     - apk add --no-cache git
 
   script:
-    - git config --global user.name "GitLab CI"
-    - git config --global user.email "gitlab-ci@users.noreply.github.com"
-    - git remote add github "https://x-access-token:${GITHUB_TOKEN}@github.com/ayaandh/tekst.git"
-    - git push github HEAD:main --force
+    - |
+      git config --global user.name "GitLab CI"
+      git config --global user.email "gitlab-ci@users.noreply.github.com"
 
+      git remote add github "https://x-access-token:${GITHUB_TOKEN}@github.com/ayaandh/tekst.git"
+
+      echo "Syncing GitLab -> GitHub..."
+
+      git push github HEAD:main --force
+
+      echo "GitHub sync complete."
 
 collect-github:
   stage: collect
@@ -36,6 +42,8 @@ collect-github:
       RUN_ID=""
 
       for i in $(seq 1 60); do
+        echo "Checking for GitHub Actions run ($i/60)..."
+
         RUNS=$(curl -fsSL \
           -H "Authorization: Bearer ${GITHUB_TOKEN}" \
           -H "Accept: application/vnd.github+json" \
@@ -43,26 +51,29 @@ collect-github:
           "https://api.github.com/repos/ayaandh/tekst/actions/runs?event=push&branch=main&per_page=10")
 
         RUN_ID=$(echo "$RUNS" | jq -r '
-          .workflow_runs[]
-          | select(.name == "Multi-Platform Native Build")
-          | .id
-        ' | head -n 1)
+          [.workflow_runs[]
+           | select(.name == "Multi-Platform Native Build")
+           | .id][0] // empty
+        ')
 
-        if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+        if [ -n "$RUN_ID" ]; then
           echo "Found GitHub Actions run: $RUN_ID"
           break
         fi
 
-        echo "Waiting for GitHub Actions run..."
+        echo "GitHub Actions run not found yet."
         sleep 5
       done
 
-      if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-        echo "GitHub Actions run was not found"
+      if [ -z "$RUN_ID" ]; then
+        echo "ERROR: GitHub Actions run was not found."
         exit 1
       fi
 
       echo "Waiting for GitHub Actions run to complete..."
+
+      STATUS=""
+      CONCLUSION=""
 
       for i in $(seq 1 120); do
         RUN=$(curl -fsSL \
@@ -74,7 +85,8 @@ collect-github:
         STATUS=$(echo "$RUN" | jq -r '.status')
         CONCLUSION=$(echo "$RUN" | jq -r '.conclusion')
 
-        echo "GitHub status: ${STATUS}, conclusion: ${CONCLUSION}"
+        echo "GitHub status: ${STATUS}"
+        echo "GitHub conclusion: ${CONCLUSION}"
 
         if [ "$STATUS" = "completed" ]; then
           break
@@ -84,14 +96,17 @@ collect-github:
       done
 
       if [ "$STATUS" != "completed" ]; then
-        echo "GitHub Actions did not finish"
+        echo "ERROR: GitHub Actions did not finish."
         exit 1
       fi
 
       if [ "$CONCLUSION" != "success" ]; then
-        echo "GitHub Actions failed"
+        echo "ERROR: GitHub Actions failed."
+        echo "Conclusion: ${CONCLUSION}"
         exit 1
       fi
+
+      echo "GitHub Actions completed successfully."
 
       mkdir -p artifacts
 
@@ -112,20 +127,21 @@ collect-github:
         Tekst-windows \
         TK-windows
       do
+        echo "Looking for artifact: ${ARTIFACT}"
 
         ID=$(jq -r \
           --arg NAME "$ARTIFACT" \
-          '.artifacts[]
+          '[.artifacts[]
            | select(.name == $NAME)
-           | .id' \
-          artifacts.json | head -n 1)
+           | .id][0] // empty' \
+          artifacts.json)
 
-        if [ -z "$ID" ] || [ "$ID" = "null" ]; then
-          echo "Artifact not found: $ARTIFACT"
+        if [ -z "$ID" ]; then
+          echo "ERROR: Artifact not found: ${ARTIFACT}"
           exit 1
         fi
 
-        echo "Downloading $ARTIFACT..."
+        echo "Found ${ARTIFACT}: ${ID}"
 
         curl -fsSL \
           -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -140,9 +156,10 @@ collect-github:
           "artifacts/${ARTIFACT}.zip" \
           -d "artifacts/${ARTIFACT}"
 
+        echo "${ARTIFACT} downloaded successfully."
       done
 
-      echo "All Linux, macOS and Windows artifacts downloaded."
+      echo "All artifacts downloaded successfully."
 
   artifacts:
     name: "Tekst-Linux-macOS-Windows"
