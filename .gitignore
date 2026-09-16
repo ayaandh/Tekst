@@ -1,31 +1,4 @@
-# Build directories
 build/
-
-# CMake
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-CTestTestfile.cmake
-Makefile
-
-# Compiled files
-*.exe
-*.o
-*.obj
-*.out
-*.dll
-*.so
-*.dylib
-
-# IDE
 .vs/
 .vscode/
 .idea/
-
-# Vim
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
