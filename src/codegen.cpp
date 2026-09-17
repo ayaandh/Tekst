@@ -11,7 +11,7 @@ std::string Codegen::escape(const std::string&s){return q(s);}
 void Codegen::ensureSlot(const std::string& n){
  if(slots.count(n)) return;
  std::string s="%slot_"+n;
- body<<"  "<<s<<" = alloca ptr\n";
+ allocas<<"  "<<s<<" = alloca ptr\n";
  auto z=tmp(); body<<"  "<<z<<" = call ptr @rt_none()\n"; body<<"  store ptr "<<z<<", ptr "<<s<<"\n";
  slots[n]=s;
 }
@@ -30,7 +30,7 @@ std::string Codegen::emitLambda(Lambda* l){
     auto oldFn=currentFn, oldOwner=currentOwner;
     int oldId=nextId, oldBlock=nextBlock;
     bool oldTerm=terminated;
-    body.str("");body.clear();slots.clear();types.clear();defers.clear();nextId=0;nextBlock=0;terminated=false;controlKind=0;
+    body.str("");body.clear();allocas.str("");allocas.clear();slots.clear();types.clear();defers.clear();nextId=0;nextBlock=0;terminated=false;controlKind=0;
     std::string name="__lambda_"+std::to_string(++lambdaId);
     currentFn=name;currentOwner="";
     lambdaFunctions<<"define ptr @"<<name<<"(";
@@ -38,7 +38,7 @@ std::string Codegen::emitLambda(Lambda* l){
     lambdaFunctions<<") {\nentry:\n";
     for(size_t i=0;i<l->params.size();++i){ensureSlot(l->params[i]);storeVar(l->params[i],"%a"+std::to_string(i));}
     auto v=emitExpr(l->body.get());
-    lambdaFunctions<<body.str()<<"  ret ptr "<<v<<"\n}\n";
+    lambdaFunctions<<allocas.str()<<body.str()<<"  ret ptr "<<v<<"\n}\n";
     body.str(oldBody);body.clear();body.seekp(0,std::ios::end);
     slots=std::move(oldSlots);types=std::move(oldTypes);defers=std::move(oldDefers);
     currentFn=oldFn;currentOwner=oldOwner;nextId=oldId;nextBlock=oldBlock;terminated=oldTerm;
@@ -66,7 +66,7 @@ std::string Codegen::emitExpr(Expr*e){
    return loadVar(n->v);
  }
  if(auto l=dynamic_cast<List*>(e)){std::vector<std::string>v;for(auto&x:l->xs)v.push_back(emitExpr(x.get()));auto r=tmp();body<<"  "<<r<<" = call ptr (i32, ...) @rt_list(i32 "<<v.size();for(auto&x:v)body<<", ptr "<<x;body<<")\n";return r;} if(auto t=dynamic_cast<Tuple*>(e)){std::vector<std::string>v;for(auto&x:t->xs)v.push_back(emitExpr(x.get()));auto r=tmp();body<<"  "<<r<<" = call ptr (i32, ...) @rt_list(i32 "<<v.size();for(auto&x:v)body<<", ptr "<<x;body<<")\n";return r;}
- if(auto lc=dynamic_cast<ListComp*>(e)){auto it=emitExpr(lc->iterable.get());auto out=tmp();body<<"  "<<out<<" = call ptr @rt_list_empty()\n";ensureSlot(lc->var);auto oldvar=tmp();body<<"  "<<oldvar<<" = load ptr, ptr "<<slots[lc->var]<<"\n";auto idxslot="%compi"+std::to_string(++nextId);body<<"  "<<idxslot<<" = alloca ptr\n";auto z=tmp();body<<"  "<<z<<" = call ptr @rt_int(i64 0)\n  store ptr "<<z<<", ptr "<<idxslot<<"\n";auto idx=tmp();body<<"  "<<idx<<" = load ptr, ptr "<<idxslot<<"\n";auto head=label("comph"),done=label("compend"),inside=label("compbody");body<<"  br label %"<<head<<"\n"<<head<<":\n";idx=tmp();body<<"  "<<idx<<" = load ptr, ptr "<<idxslot<<"\n";auto n=tmp();body<<"  "<<n<<" = call ptr @rt_len(ptr "<<it<<")\n";auto cond=tmp();body<<"  "<<cond<<" = call ptr @rt_lt(ptr "<<idx<<", ptr "<<n<<")\n";auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<cond<<")\n  br i1 "<<tr<<", label %"<<inside<<", label %"<<done<<"\n"<<inside<<":\n";auto item=tmp();body<<"  "<<item<<" = call ptr @rt_index(ptr "<<it<<", ptr "<<idx<<")\n";storeVar(lc->var,item);auto ev=emitExpr(lc->value.get());body<<"  call void @rt_list_push(ptr "<<out<<", ptr "<<ev<<" )\n";auto one=tmp();body<<"  "<<one<<" = call ptr @rt_int(i64 1)\n";auto ni=tmp();body<<"  "<<ni<<" = call ptr @rt_add(ptr "<<idx<<", ptr "<<one<<")\n  store ptr "<<ni<<", ptr "<<idxslot<<"\n";body<<"  br label %"<<head<<"\n"<<done<<":\n";body<<"  store ptr "<<oldvar<<", ptr "<<slots[lc->var]<<"\n";return out;}
+ if(auto lc=dynamic_cast<ListComp*>(e)){auto it=emitExpr(lc->iterable.get());auto out=tmp();body<<"  "<<out<<" = call ptr @rt_list_empty()\n";ensureSlot(lc->var);auto oldvar=tmp();body<<"  "<<oldvar<<" = load ptr, ptr "<<slots[lc->var]<<"\n";auto idxslot="%compi"+std::to_string(++nextId);allocas<<"  "<<idxslot<<" = alloca ptr\n";auto z=tmp();body<<"  "<<z<<" = call ptr @rt_int(i64 0)\n  store ptr "<<z<<", ptr "<<idxslot<<"\n";auto idx=tmp();body<<"  "<<idx<<" = load ptr, ptr "<<idxslot<<"\n";auto head=label("comph"),done=label("compend"),inside=label("compbody");body<<"  br label %"<<head<<"\n"<<head<<":\n";idx=tmp();body<<"  "<<idx<<" = load ptr, ptr "<<idxslot<<"\n";auto n=tmp();body<<"  "<<n<<" = call ptr @rt_len(ptr "<<it<<")\n";auto cond=tmp();body<<"  "<<cond<<" = call ptr @rt_lt(ptr "<<idx<<", ptr "<<n<<")\n";auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<cond<<")\n  br i1 "<<tr<<", label %"<<inside<<", label %"<<done<<"\n"<<inside<<":\n";auto item=tmp();body<<"  "<<item<<" = call ptr @rt_index(ptr "<<it<<", ptr "<<idx<<")\n";storeVar(lc->var,item);auto ev=emitExpr(lc->value.get());body<<"  call void @rt_list_push(ptr "<<out<<", ptr "<<ev<<" )\n";auto one=tmp();body<<"  "<<one<<" = call ptr @rt_int(i64 1)\n";auto ni=tmp();body<<"  "<<ni<<" = call ptr @rt_add(ptr "<<idx<<", ptr "<<one<<")\n  store ptr "<<ni<<", ptr "<<idxslot<<"\n";body<<"  br label %"<<head<<"\n"<<done<<":\n";body<<"  store ptr "<<oldvar<<", ptr "<<slots[lc->var]<<"\n";return out;}
  if(auto l=dynamic_cast<Lambda*>(e))return emitLambda(l);
  if(auto d=dynamic_cast<Dict*>(e)){std::vector<std::string>v;for(auto&x:d->xs){v.push_back(emitExpr(x.first.get()));v.push_back(emitExpr(x.second.get()));}auto r=tmp();body<<"  "<<r<<" = call ptr (i32, ...) @rt_dict(i32 "<<d->xs.size();for(auto&x:v)body<<", ptr "<<x;body<<")\n";return r;}
  if(auto u=dynamic_cast<Unary*>(e)){
@@ -208,7 +208,7 @@ void Codegen::emitStmt(Stmt*s){
    for(size_t i=0;i<z->branches.size();++i){auto c=emitExpr(z->branches[i].first.get());auto yes=label("ifyes"),no=label("ifno");auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<c<<")\n  br i1 "<<tr<<", label %"<<yes<<", label %"<<no<<"\n"<<yes<<":\n";emitBlock(z->branches[i].second);if(!terminated)body<<"  br label %"<<end<<"\n";terminated=false;body<<no<<":\n";if(i+1==z->branches.size()&&!z->els.empty())emitBlock(z->els);if(i+1==z->branches.size()&&!terminated)body<<"  br label %"<<end<<"\n";}body<<end<<":\n";return;
  }
  if(auto w=dynamic_cast<While*>(s)){auto head=label("while"),done=label("wend"),inside=label("wbody");body<<"  br label %"<<head<<"\n"<<head<<":\n";auto c=emitExpr(w->cond.get());auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<c<<")\n  br i1 "<<tr<<", label %"<<inside<<", label %"<<done<<"\n"<<inside<<":\n";breakTargets.push_back(done);continueTargets.push_back(head);terminated=false;emitBlock(w->body);breakTargets.pop_back();continueTargets.pop_back();if(!terminated)body<<"  br label %"<<head<<"\n";terminated=false;body<<done<<":\n";return;}
- if(auto f=dynamic_cast<For*>(s)){auto it=emitExpr(f->iterable.get());std::string idxslot="%foridx"+std::to_string(++nextId);body<<"  "<<idxslot<<" = alloca ptr\n";auto zero=tmp();body<<"  "<<zero<<" = call ptr @rt_int(i64 0)\n  store ptr "<<zero<<", ptr "<<idxslot<<"\n";std::string head=label("for"),done=label("forend"),inside=label("forbody"),inc=label("forinc");body<<"  br label %"<<head<<"\n"<<head<<":\n";auto idx=tmp();body<<"  "<<idx<<" = load ptr, ptr "<<idxslot<<"\n";auto n=tmp();body<<"  "<<n<<" = call ptr @rt_len(ptr "<<it<<")\n";auto cond=tmp();body<<"  "<<cond<<" = call ptr @rt_lt(ptr "<<idx<<", ptr "<<n<<")\n";auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<cond<<")\n  br i1 "<<tr<<", label %"<<inside<<", label %"<<done<<"\n"<<inside<<":\n";auto v=tmp();body<<"  "<<v<<" = call ptr @rt_index(ptr "<<it<<", ptr "<<idx<<")\n";storeVar(f->var,v);breakTargets.push_back(done);continueTargets.push_back(inc);terminated=false;emitBlock(f->body);breakTargets.pop_back();continueTargets.pop_back();if(terminated&&controlKind==1){terminated=false;body<<done<<":\n";return;}if(!terminated)body<<"  br label %"<<inc<<"\n";terminated=false;body<<inc<<":\n";auto one=tmp();body<<"  "<<one<<" = call ptr @rt_int(i64 1)\n";auto ni=tmp();body<<"  "<<ni<<" = call ptr @rt_add(ptr "<<idx<<", ptr "<<one<<")\n  store ptr "<<ni<<", ptr "<<idxslot<<"\n";body<<"  br label %"<<head<<"\n"<<done<<":\n";return;}
+ if(auto f=dynamic_cast<For*>(s)){auto it=emitExpr(f->iterable.get());std::string idxslot="%foridx"+std::to_string(++nextId);allocas<<"  "<<idxslot<<" = alloca ptr\n";auto zero=tmp();body<<"  "<<zero<<" = call ptr @rt_int(i64 0)\n  store ptr "<<zero<<", ptr "<<idxslot<<"\n";std::string head=label("for"),done=label("forend"),inside=label("forbody"),inc=label("forinc");body<<"  br label %"<<head<<"\n"<<head<<":\n";auto idx=tmp();body<<"  "<<idx<<" = load ptr, ptr "<<idxslot<<"\n";auto n=tmp();body<<"  "<<n<<" = call ptr @rt_len(ptr "<<it<<")\n";auto cond=tmp();body<<"  "<<cond<<" = call ptr @rt_lt(ptr "<<idx<<", ptr "<<n<<")\n";auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<cond<<")\n  br i1 "<<tr<<", label %"<<inside<<", label %"<<done<<"\n"<<inside<<":\n";auto v=tmp();body<<"  "<<v<<" = call ptr @rt_index(ptr "<<it<<", ptr "<<idx<<")\n";storeVar(f->var,v);breakTargets.push_back(done);continueTargets.push_back(inc);terminated=false;emitBlock(f->body);breakTargets.pop_back();continueTargets.pop_back();if(terminated&&controlKind==1){terminated=false;body<<done<<":\n";return;}if(!terminated)body<<"  br label %"<<inc<<"\n";terminated=false;body<<inc<<":\n";auto one=tmp();body<<"  "<<one<<" = call ptr @rt_int(i64 1)\n";auto ni=tmp();body<<"  "<<ni<<" = call ptr @rt_add(ptr "<<idx<<", ptr "<<one<<")\n  store ptr "<<ni<<", ptr "<<idxslot<<"\n";body<<"  br label %"<<head<<"\n"<<done<<":\n";return;}
  if(dynamic_cast<Try*>(s)){throw std::runtime_error("try/catch lowering is not yet enabled in the LLVM backend");}
  if(auto fn=dynamic_cast<Function*>(s)){return;} if(auto c=dynamic_cast<Class*>(s)){return;}
  throw std::runtime_error("unsupported statement");
@@ -216,7 +216,7 @@ void Codegen::emitStmt(Stmt*s){
 void Codegen::emitBlock(const std::vector<S>&v){for(auto&s:v){if(terminated)break;emitStmt(s.get());}}
 
 void Codegen::emitFunction(Function*f){
- slots.clear();types.clear();defers.clear();nextId=0;nextBlock=0;terminated=false;controlKind=0;body.str("");body.clear();currentFn=f->name;currentOwner=f->owner;
+ slots.clear();types.clear();defers.clear();nextId=0;nextBlock=0;terminated=false;controlKind=0;body.str("");body.clear();allocas.str("");allocas.clear();currentFn=f->name;currentOwner=f->owner;
  std::string sym=f->method?f->owner+"__"+f->name:f->name;
  bool explicitSelf=f->method && !f->params.empty() && f->params[0]=="self";
  ir<<"define ptr @"<<sym<<"(";size_t n=f->params.size()+(f->method&&!explicitSelf?1:0);for(size_t i=0;i<n;++i){if(i)ir<<", ";ir<<"ptr %a"<<i;}ir<<") {\nentry:\n";
@@ -226,7 +226,7 @@ void Codegen::emitFunction(Function*f){
  emitBlock(f->body);
  for(auto it=defers.rbegin();it!=defers.rend();++it)emitExpr(*it);
  auto r=tmp();body<<"  "<<r<<" = call ptr @rt_none()\n  ret ptr "<<r<<"\n";
- ir<<body.str()<<"}\n";
+ ir<<allocas.str()<<body.str()<<"}\n";
 }
 std::string Codegen::generate(const Program&p){
  ir<<"; Tekst LLVM IR\nsource_filename = \"Tekst\"\n\n";
@@ -241,10 +241,10 @@ std::string Codegen::generate(const Program&p){
  }
  for(auto&s:p.body)if(auto f=dynamic_cast<Function*>(s.get()))emitFunction(f);
  for(auto&s:p.body)if(auto c=dynamic_cast<Class*>(s.get()))for(auto&x:c->body)if(auto f=dynamic_cast<Function*>(x.get()))emitFunction(f);
- slots.clear();types.clear();defers.clear();terminated=false;nextId=0;nextBlock=0;body.str("");body.clear();currentFn="main";currentOwner="";
+ slots.clear();types.clear();defers.clear();terminated=false;nextId=0;nextBlock=0;body.str("");body.clear();allocas.str("");allocas.clear();currentFn="main";currentOwner="";
  emitBlock(p.body);
  for(auto it=defers.rbegin();it!=defers.rend();++it)emitExpr(*it);
  ir<<globals.str();
  ir<<lambdaFunctions.str();
- ir<<"define i32 @main() {\nentry:\n"<<body.str()<<"  ret i32 0\n}\n";return ir.str();
+ ir<<"define i32 @main() {\nentry:\n"<<allocas.str()<<body.str()<<"  ret i32 0\n}\n";return ir.str();
 }
