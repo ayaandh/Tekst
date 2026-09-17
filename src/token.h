@@ -10,8 +10,8 @@ enum class TokenKind {
     Plus, Minus, Star, Slash, Percent, Ampersand,
     Eq, EqEq, NotEq, Lt, Le, Gt, Ge,
     LParen, RParen, LBracket, RBracket, LBrace, RBrace,
-    Comma, Colon, Dot,
-    PlusEq, MinusEq, StarEq, SlashEq,
+    Comma, Colon, Dot, QDot,
+    PlusEq, MinusEq, StarEq, SlashEq, Arrow,
     Keyword
 };
 
@@ -21,4 +21,4 @@ struct Token {
     int line = 1;
     int column = 1;
 };
-std::vector<Token> lex(const std::string& source);
+std::vector<Token> lex(const std::string& source, const std::string& filename = {});

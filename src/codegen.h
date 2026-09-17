@@ -18,9 +18,15 @@ class Codegen {
     std::unordered_map<std::string,std::string> slots;
     std::unordered_map<std::string,std::string> types;
     std::vector<std::string> breakTargets, continueTargets;
+    std::vector<Expr*> defers;
+    std::ostringstream lambdaFunctions;
+    int lambdaId=0;
+    bool terminated=false;
+    int controlKind=0;
     std::string tmp(){return "%v"+std::to_string(++nextId);}
     std::string label(const std::string&s){return s+std::to_string(++nextBlock);}
     std::string emitExpr(Expr*);
+    std::string emitLambda(Lambda*);
     void emitStmt(Stmt*);
     void emitBlock(const std::vector<S>&);
     std::string loadVar(const std::string&);

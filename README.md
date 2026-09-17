@@ -153,6 +153,10 @@ name = "Tekst"
 print("Running {name}")
 ```
 
+## Feature direction
+
+Tekst is being developed around a batteries-included standard library, safer memory management, compiler-quality diagnostics, a cross-platform application framework, HTTP/server support, and C/C++ interoperability. See `FEATURES_NEXT.md` for the current direction.
+
 ## Backend status
 
 The LLVM backend currently covers the core execution model: values, arithmetic, comparisons, logical operations, variables, functions, default arguments, conditionals, loops, collections, object fields, constructors, methods, built-ins, indexing, and basic string interpolation.
