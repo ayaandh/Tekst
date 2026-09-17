@@ -1,4 +1,0 @@
-def test():
-    defer print("bye")
-    print("hi")
-test()

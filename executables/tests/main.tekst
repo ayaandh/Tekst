@@ -1,6 +1,0 @@
-age = int(input("enter age: "))
-
-if age >= 18:
-    print("YES")
-else:
-    print("NO")
