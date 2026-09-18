@@ -387,7 +387,7 @@ class Parser {
             ++p;E e;if(!is(TokenKind::Newline)&&!is(TokenKind::Dedent)&&!is(TokenKind::End))e=expr();
             nl();return std::make_unique<Return>(std::move(e));
         }
-        if(word("print")){++p;take(TokenKind::LParen);auto e=expr();take(TokenKind::RParen);nl();return std::make_unique<Print>(std::move(e));}
+        if(word("print")){++p;take(TokenKind::LParen);std::vector<E> args;if(!is(TokenKind::RParen)){do{args.push_back(expr());if(!is(TokenKind::Comma))break;++p;}while(!is(TokenKind::RParen));}take(TokenKind::RParen);nl();return std::make_unique<Print>(std::move(args));}
         if(word("fn")||word("def"))return function(false,"");
         if(word("class"))return classDecl(false);
         if(word("struct"))return classDecl(true);

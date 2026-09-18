@@ -1,0 +1,21 @@
+import math
+import random
+import fs
+import time
+import os
+
+print(math.sqrt(81))
+print(math.pi)
+print(math.pow(2, 8))
+print(random.randint(7, 7))
+print(random.uniform(1, 2) >= 1)
+print(fs.exists("."))
+fs.write("stdlib_test.tmp", "Tekst")
+print(fs.read("stdlib_test.tmp"))
+fs.append("stdlib_test.tmp", "!")
+print(fs.read("stdlib_test.tmp"))
+print(fs.is_file("stdlib_test.tmp"))
+fs.remove("stdlib_test.tmp")
+print(fs.exists("stdlib_test.tmp"))
+print(time.now())
+print(os.cwd())

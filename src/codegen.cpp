@@ -7,6 +7,7 @@ static std::string q(const std::string&s){
  std::string r;for(unsigned char c:s){if(c=='\\'||c=='"')r+='\\';if(c=='\n')r+="\\0A";else if(c=='\r')r+="\\0D";else if(c=='\t')r+="\\09";else if(c<32)r+='?';else r+=c;}return r;
 }
 std::string Codegen::escape(const std::string&s){return q(s);}
+static bool isStdModule(const std::string& m){return m=="math"||m=="random"||m=="fs"||m=="time"||m=="os"||m=="http";}
 
 void Codegen::ensureSlot(const std::string& n){
  if(slots.count(n)) return;
@@ -99,7 +100,19 @@ std::string Codegen::emitExpr(Expr*e){
    body<<"  "<<r<<" = call ptr @rt_"<<fn<<"(ptr "<<a<<", ptr "<<c<<")\n";return r;
  }
  if(auto i=dynamic_cast<Index*>(e)){auto a=emitExpr(i->a.get()),x=emitExpr(i->i.get()),r=tmp();body<<"  "<<r<<" = call ptr @rt_index(ptr "<<a<<", ptr "<<x<<")\n";return r;}
- if(auto a=dynamic_cast<Attr*>(e)){auto x=emitExpr(a->a.get()),r=tmp();static int sid=10000;std::string g="@.a"+std::to_string(sid++);globals<<g<<" = private unnamed_addr constant ["<<a->n.size()+1<<" x i8] c\""<<q(a->n)<<"\\00\"\n";auto p=tmp();body<<"  "<<p<<" = getelementptr inbounds ["<<a->n.size()+1<<" x i8], ptr "<<g<<", i64 0, i64 0\n";body<<"  "<<r<<" = call ptr @"<<(a->optional?"rt_optional_attr":"rt_get_attr")<<"(ptr "<<x<<", ptr "<<p<<")\n";return r;}
+ if(auto a=dynamic_cast<Attr*>(e)){
+    if(auto mod=dynamic_cast<Name*>(a->a.get()); mod && importedModules.count(mod->v) && isStdModule(importedModules[mod->v])){
+      std::string module=importedModules[mod->v],key=a->n;
+      if(module=="math"&&(key=="pi"||key=="e"||key=="tau")){
+        static int sid=52000;std::string gm="@.stdm"+std::to_string(sid++),gn="@.stdn"+std::to_string(sid++);
+        globals<<gm<<" = private unnamed_addr constant ["<<module.size()+1<<" x i8] c\""<<q(module)<<"\\00\"\n";
+        globals<<gn<<" = private unnamed_addr constant ["<<key.size()+1<<" x i8] c\""<<q(key)<<"\\00\"\n";
+        auto pm=tmp(),pn=tmp();body<<"  "<<pm<<" = getelementptr inbounds ["<<module.size()+1<<" x i8], ptr "<<gm<<", i64 0, i64 0\n";
+        body<<"  "<<pn<<" = getelementptr inbounds ["<<key.size()+1<<" x i8], ptr "<<gn<<", i64 0, i64 0\n";
+        auto r=tmp();body<<"  "<<r<<" = call ptr @rt_std_get(ptr "<<pm<<", ptr "<<pn<<")\n";return r;
+      }
+    }
+    auto x=emitExpr(a->a.get()),r=tmp();static int sid=10000;std::string g="@.a"+std::to_string(sid++);globals<<g<<" = private unnamed_addr constant ["<<a->n.size()+1<<" x i8] c\""<<q(a->n)<<"\\00\"\n";auto p=tmp();body<<"  "<<p<<" = getelementptr inbounds ["<<a->n.size()+1<<" x i8], ptr "<<g<<", i64 0, i64 0\n";body<<"  "<<r<<" = call ptr @"<<(a->optional?"rt_optional_attr":"rt_get_attr")<<"(ptr "<<x<<", ptr "<<p<<")\n";return r;}
  if(auto c=dynamic_cast<Call*>(e)){
    std::vector<std::string>args;for(auto&x:c->args)args.push_back(emitExpr(x.get()));
    if(auto n=dynamic_cast<Name*>(c->callee.get())){
@@ -115,6 +128,18 @@ std::string Codegen::emitExpr(Expr*e){
        body<<"  "<<r<<" = call ptr @rt_"<<built[bn]<<"(ptr "<<args.at(0)<<")\n";return r;
      }
      if(bn=="range"){auto r=tmp();body<<"  "<<r<<" = call ptr (i32, ...) @rt_range(i32 "<<args.size();for(auto&x:args)body<<", ptr "<<x;body<<")\n";return r;}
+     if(bn.find('.')!=std::string::npos){
+       auto dot=bn.find('.'); std::string mod=bn.substr(0,dot),name=bn.substr(dot+1);
+       if(isStdModule(mod)){
+         static int sid=50000;std::string gm="@.stdm"+std::to_string(sid++),gn="@.stdn"+std::to_string(sid++);
+         globals<<gm<<" = private unnamed_addr constant ["<<mod.size()+1<<" x i8] c\""<<q(mod)<<"\\00\"\n";
+         globals<<gn<<" = private unnamed_addr constant ["<<name.size()+1<<" x i8] c\""<<q(name)<<"\\00\"\n";
+         auto pm=tmp(),pn=tmp();body<<"  "<<pm<<" = getelementptr inbounds ["<<mod.size()+1<<" x i8], ptr "<<gm<<", i64 0, i64 0\n";
+         body<<"  "<<pn<<" = getelementptr inbounds ["<<name.size()+1<<" x i8], ptr "<<gn<<", i64 0, i64 0\n";
+         auto r=tmp();body<<"  "<<r<<" = call ptr (ptr,ptr,i32,...) @rt_std_call(ptr "<<pm<<", ptr "<<pn<<", i32 "<<args.size();
+         for(auto&x:args)body<<", ptr "<<x;body<<")\n";return r;
+       }
+     }
      auto it=functions.find(bn);if(it!=functions.end()){
        Function*f=it->second.f; if(args.size()>f->params.size())throw std::runtime_error("too many arguments to "+bn);
        while(args.size()<f->params.size()){size_t k=args.size();if(!f->defaults[k])throw std::runtime_error("missing argument to "+bn);args.push_back(emitExpr(f->defaults[k].get()));}
@@ -130,6 +155,16 @@ std::string Codegen::emitExpr(Expr*e){
    if(auto at=dynamic_cast<Attr*>(c->callee.get())){
      if(auto mod=dynamic_cast<Name*>(at->a.get()); mod && importedModules.count(mod->v)){
        std::string key=at->n;
+       std::string module=importedModules[mod->v];
+       if(isStdModule(module)){
+         static int sid=51000;std::string gm="@.stdm"+std::to_string(sid++),gn="@.stdn"+std::to_string(sid++);
+         globals<<gm<<" = private unnamed_addr constant ["<<module.size()+1<<" x i8] c\""<<q(module)<<"\\00\"\n";
+         globals<<gn<<" = private unnamed_addr constant ["<<key.size()+1<<" x i8] c\""<<q(key)<<"\\00\"\n";
+         auto pm=tmp(),pn=tmp();body<<"  "<<pm<<" = getelementptr inbounds ["<<module.size()+1<<" x i8], ptr "<<gm<<", i64 0, i64 0\n";
+         body<<"  "<<pn<<" = getelementptr inbounds ["<<key.size()+1<<" x i8], ptr "<<gn<<", i64 0, i64 0\n";
+         auto r=tmp();body<<"  "<<r<<" = call ptr (ptr,ptr,i32,...) @rt_std_call(ptr "<<pm<<", ptr "<<pn<<", i32 "<<args.size();
+         for(auto&x:args)body<<", ptr "<<x;body<<")\n";return r;
+       }
        auto fi=functions.find(key);
        if(fi!=functions.end()){
          Function*f=fi->second.f;
@@ -153,7 +188,7 @@ std::string Codegen::emitExpr(Expr*e){
 
 void Codegen::emitStmt(Stmt*s){
  if(dynamic_cast<Import*>(s) || dynamic_cast<FromImport*>(s)) return;
- if(auto p=dynamic_cast<Print*>(s)){auto x=emitExpr(p->e.get());body<<"  call void @rt_print(ptr "<<x<<")\n";return;}
+ if(auto p=dynamic_cast<Print*>(s)){std::vector<std::string> args;for(auto&arg:p->args)args.push_back(emitExpr(arg.get()));body<<"  call void (i32, ...) @rt_print_many(i32 "<<args.size();for(auto&x:args)body<<", ptr "<<x;body<<")\n";return;}
  if(auto e=dynamic_cast<ExprStmt*>(s)){emitExpr(e->e.get());return;}
  if(auto a=dynamic_cast<Assign*>(s)){
    std::string v=emitExpr(a->value.get());if(a->op!="="){auto old=emitExpr(a->target.get());std::string fn=a->op=="+="? "add":a->op=="-="? "sub":a->op=="*="? "mul":"div";auto r=tmp();body<<"  "<<r<<" = call ptr @rt_"<<fn<<"(ptr "<<old<<", ptr "<<v<<")\n";v=r;}
@@ -230,10 +265,10 @@ void Codegen::emitFunction(Function*f){
 }
 std::string Codegen::generate(const Program&p){
  ir<<"; Tekst LLVM IR\nsource_filename = \"Tekst\"\n\n";
- ir<<"declare ptr @rt_none()\ndeclare ptr @rt_int(i64)\ndeclare ptr @rt_float(double)\ndeclare ptr @rt_str(ptr)\ndeclare ptr @rt_str_const_empty()\ndeclare ptr @rt_bool(i1)\ndeclare ptr @rt_callable(ptr)\ndeclare ptr @rt_call_callable(ptr,i32,...)\ndeclare ptr @rt_list_empty()\ndeclare void @rt_list_push(ptr,ptr)\ndeclare ptr @rt_optional_attr(ptr,ptr)\ndeclare ptr @rt_add(ptr,ptr)\ndeclare ptr @rt_sub(ptr,ptr)\ndeclare ptr @rt_mul(ptr,ptr)\ndeclare ptr @rt_div(ptr,ptr)\ndeclare ptr @rt_mod(ptr,ptr)\ndeclare ptr @rt_eq(ptr,ptr)\ndeclare ptr @rt_ne(ptr,ptr)\ndeclare ptr @rt_lt(ptr,ptr)\ndeclare ptr @rt_le(ptr,ptr)\ndeclare ptr @rt_gt(ptr,ptr)\ndeclare ptr @rt_ge(ptr,ptr)\ndeclare ptr @rt_neg(ptr)\ndeclare ptr @rt_not(ptr)\ndeclare ptr @rt_ref(ptr)\ndeclare ptr @rt_deref(ptr)\ndeclare void @rt_store(ptr,ptr)\ndeclare ptr @rt_alloc(ptr)\ndeclare void @rt_free(ptr)\ndeclare ptr @rt_ptr_add(ptr,ptr)\ndeclare ptr @rt_ptr_load_int(ptr)\ndeclare void @rt_ptr_store_int(ptr,ptr)\ndeclare ptr @rt_ptr_load_byte(ptr)\ndeclare void @rt_ptr_store_byte(ptr,ptr)\ndeclare ptr @rt_and(ptr,ptr)\ndeclare ptr @rt_or(ptr,ptr)\ndeclare i1 @rt_truth(ptr)\ndeclare void @rt_print(ptr)\ndeclare ptr @rt_input(ptr)\ndeclare ptr @rt_to_int(ptr)\ndeclare ptr @rt_to_str(ptr)\ndeclare ptr @rt_to_bool(ptr)\ndeclare ptr @rt_to_float(ptr)\ndeclare ptr @rt_len(ptr)\ndeclare ptr @rt_index(ptr,ptr)\ndeclare void @rt_set_index(ptr,ptr,ptr)\ndeclare ptr @rt_list(i32,...)\ndeclare ptr @rt_dict(i32,...)\ndeclare ptr @rt_range(i32,...)\ndeclare ptr @rt_new_object(ptr)\ndeclare ptr @rt_get_attr(ptr,ptr)\ndeclare void @rt_set_attr(ptr,ptr,ptr)\ndeclare ptr @rt_call_method(ptr,ptr,...)\ndeclare ptr @rt_format(ptr,i32,...)\ndeclare i32 @rt_try_begin()\ndeclare void @rt_try_end()\ndeclare void @rt_throw(ptr)\ndeclare ptr @rt_last_error()\n\n";
+ ir<<"declare ptr @rt_none()\ndeclare ptr @rt_int(i64)\ndeclare ptr @rt_float(double)\ndeclare ptr @rt_str(ptr)\ndeclare ptr @rt_str_const_empty()\ndeclare ptr @rt_bool(i1)\ndeclare ptr @rt_callable(ptr)\ndeclare ptr @rt_call_callable(ptr,i32,...)\ndeclare ptr @rt_list_empty()\ndeclare void @rt_list_push(ptr,ptr)\ndeclare ptr @rt_optional_attr(ptr,ptr)\ndeclare ptr @rt_add(ptr,ptr)\ndeclare ptr @rt_sub(ptr,ptr)\ndeclare ptr @rt_mul(ptr,ptr)\ndeclare ptr @rt_div(ptr,ptr)\ndeclare ptr @rt_mod(ptr,ptr)\ndeclare ptr @rt_eq(ptr,ptr)\ndeclare ptr @rt_ne(ptr,ptr)\ndeclare ptr @rt_lt(ptr,ptr)\ndeclare ptr @rt_le(ptr,ptr)\ndeclare ptr @rt_gt(ptr,ptr)\ndeclare ptr @rt_ge(ptr,ptr)\ndeclare ptr @rt_neg(ptr)\ndeclare ptr @rt_not(ptr)\ndeclare ptr @rt_ref(ptr)\ndeclare ptr @rt_deref(ptr)\ndeclare void @rt_store(ptr,ptr)\ndeclare ptr @rt_alloc(ptr)\ndeclare void @rt_free(ptr)\ndeclare ptr @rt_ptr_add(ptr,ptr)\ndeclare ptr @rt_ptr_load_int(ptr)\ndeclare void @rt_ptr_store_int(ptr,ptr)\ndeclare ptr @rt_ptr_load_byte(ptr)\ndeclare void @rt_ptr_store_byte(ptr,ptr)\ndeclare ptr @rt_and(ptr,ptr)\ndeclare ptr @rt_or(ptr,ptr)\ndeclare i1 @rt_truth(ptr)\ndeclare void @rt_print(ptr)\ndeclare void @rt_print_many(i32,...)\ndeclare ptr @rt_input(ptr)\ndeclare ptr @rt_to_int(ptr)\ndeclare ptr @rt_to_str(ptr)\ndeclare ptr @rt_to_bool(ptr)\ndeclare ptr @rt_to_float(ptr)\ndeclare ptr @rt_len(ptr)\ndeclare ptr @rt_index(ptr,ptr)\ndeclare void @rt_set_index(ptr,ptr,ptr)\ndeclare ptr @rt_list(i32,...)\ndeclare ptr @rt_dict(i32,...)\ndeclare ptr @rt_range(i32,...)\ndeclare ptr @rt_new_object(ptr)\ndeclare ptr @rt_get_attr(ptr,ptr)\ndeclare void @rt_set_attr(ptr,ptr,ptr)\ndeclare ptr @rt_call_method(ptr,ptr,...)\ndeclare ptr @rt_format(ptr,i32,...)\ndeclare ptr @rt_std_call(ptr,ptr,i32,...)\ndeclare ptr @rt_std_get(ptr,ptr)\ndeclare i32 @rt_try_begin()\ndeclare void @rt_try_end()\ndeclare void @rt_throw(ptr)\ndeclare ptr @rt_last_error()\n\n";
  for(auto&s:p.body){
-   if(auto im=dynamic_cast<Import*>(s.get())) importedModules[im->alias.empty()?im->module:im->alias]=true;
-   if(auto fi=dynamic_cast<FromImport*>(s.get())) importedNames[fi->alias.empty()?fi->name:fi->alias]=fi->name;
+   if(auto im=dynamic_cast<Import*>(s.get())) importedModules[im->alias.empty()?im->module:im->alias]=im->module;
+   if(auto fi=dynamic_cast<FromImport*>(s.get())) importedNames[fi->alias.empty()?fi->name:fi->alias]=isStdModule(fi->module)?fi->module+"."+fi->name:fi->name;
  }
  for(auto&s:p.body){
    if(auto f=dynamic_cast<Function*>(s.get()))functions[f->name]={f,f->name,""};

@@ -1,0 +1,2 @@
+import http
+http.serve(8080, "Hello from Tekst HTTP server")

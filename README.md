@@ -233,6 +233,43 @@ free(mem)
 
 See `POINTERS.md` and `README_LLVM.md` for more details.
 
+## Standard library
+
+Tekst includes native standard-library modules. They are built into the runtime, so no `.tk` files are needed for them:
+
+```tk
+import math
+import random
+import fs
+import time
+import os
+
+print(math.sqrt(144))
+print(random.randint(1, 10))
+fs.write("hello.txt", "Hello from Tekst")
+print(fs.read("hello.txt"))
+print(time.now())
+print(os.cwd())
+```
+
+Available modules:
+
+- `math`: `sqrt`, `cbrt`, `pow`, `abs`, `floor`, `ceil`, `round`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `log`, `log10`, `exp`, `min`, `max`, plus `pi`, `e`, and `tau`.
+- `random`: `random`, `randint`, `randrange`, `uniform`, `choice`, and `seed`.
+- `fs`: `exists`, `is_file`, `is_dir`, `read`, `write`, `append`, `mkdir`, `remove`, and `list`.
+- `time`: `timestamp`, `now`, and `sleep`.
+- `os`: `cwd`, `chdir`, and `env`.
+
+Standard-library modules also support aliases and `from` imports:
+
+```tk
+import math as m
+print(m.sqrt(81))
+
+from random import randint as r
+print(r(1, 6))
+```
+
 ## Imports and packages
 
 Local Tekst modules and packages are resolved at compile time.

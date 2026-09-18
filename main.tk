@@ -1,0 +1,19 @@
+import math
+
+print(math.pi)
+print(math.e)
+
+print(math.sqrt(25))
+print(math.pow(2, 8))
+
+print(math.sin(0))
+print(math.cos(0))
+print(math.tan(0))
+
+print(math.abs(-42))
+print(math.floor(4.9))
+print(math.ceil(4.1))
+print(math.round(4.6))
+
+print(math.min(10, 5))
+print(math.max(10, 5))

@@ -1,13 +1,23 @@
 #include "interpreter.h"
 #include "value.h"
-#include <cmath>
-#include <random>
+#include <algorithm>
 #include <chrono>
-#include <thread>
+#include <cmath>
+#include <cctype>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <algorithm>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
 
 RuntimeValue Interpreter::callFunction(
     const std::shared_ptr<RuntimeFunction>& function,
@@ -196,7 +206,8 @@ std::shared_ptr<RuntimeObject> Interpreter::loadModule(
             });
             native("sleep", [](const auto& a) -> RuntimeValue {
                 if (a.size() != 1) throw std::runtime_error("sleep() expects one argument");
-                std::this_thread::sleep_for(std::chrono::milliseconds(asInt(a.at(0))));
+                auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(asInt(a.at(0)));
+                while (std::chrono::steady_clock::now() < deadline) {}
                 return 0;
             });
         } else if (moduleName == "fs") {

@@ -1,4 +1,3 @@
-
 #include "token.h"
 #include <cctype>
 #include <stdexcept>

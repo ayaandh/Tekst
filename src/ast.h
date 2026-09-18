@@ -26,7 +26,7 @@ struct Attr:Expr{E a;std::string n;bool optional=false;Attr(E x,std::string s,bo
 struct Stmt{virtual~Stmt()=default;}; using S=std::unique_ptr<Stmt>;
 struct ExprStmt:Stmt{E e;explicit ExprStmt(E x):e(std::move(x)){}};
 struct Assign:Stmt{E target,value;std::string op;Assign(E t,E v,std::string o="="):target(std::move(t)),value(std::move(v)),op(std::move(o)){}};
-struct Print:Stmt{E e;explicit Print(E x):e(std::move(x)){}};
+struct Print:Stmt{std::vector<E> args;explicit Print(std::vector<E> x):args(std::move(x)){}};
 struct Return:Stmt{E e;explicit Return(E x):e(std::move(x)){}};
 struct Break:Stmt{};
 struct Continue:Stmt{};
@@ -42,3 +42,4 @@ struct Match:Stmt{E value;std::vector<std::pair<E,std::vector<S>>> cases;std::ve
 struct Function:Stmt{std::string name;std::vector<std::string> params;std::vector<std::string> paramTypes;std::string returnType;std::vector<E> defaults;std::vector<S> body;bool method=false;std::string owner;};
 struct Class:Stmt{std::string name,base;std::vector<S> body;bool isStruct=false;};
 struct Program{std::vector<S> body;};
+std::size_t astNodeCount(const Program& program);

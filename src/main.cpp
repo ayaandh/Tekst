@@ -59,6 +59,10 @@ static std::vector<std::filesystem::path> packageFiles(const std::filesystem::pa
     return found;
 }
 
+static bool isStdModule(const std::string& name){
+    return name=="math"||name=="random"||name=="fs"||name=="time"||name=="os"||name=="http";
+}
+
 static std::vector<std::filesystem::path> resolveModule(const std::string& name,const std::filesystem::path& current,const std::filesystem::path& project){
     std::filesystem::path requested(name);
     std::vector<std::filesystem::path> files;
@@ -89,6 +93,10 @@ static void expandImports(Program& prog,const std::filesystem::path& sourceFile,
         if(auto im=dynamic_cast<Import*>(st.get())) module=im->module;
         else if(auto fi=dynamic_cast<FromImport*>(st.get())) module=fi->module;
         if(module.empty()){
+            expanded.push_back(std::move(st));
+            continue;
+        }
+        if(isStdModule(module)){
             expanded.push_back(std::move(st));
             continue;
         }
@@ -212,6 +220,9 @@ static std::vector<std::string> makeCompileArgs(const std::string&compiler,const
     args.push_back("-std=c++17");
     args.push_back("-O2");
     args.push_back("-Wno-override-module");
+#ifdef _WIN32
+    args.push_back("-lws2_32");
+#endif
     args.push_back(ir.string());
     args.push_back(runtime.string());
     args.push_back("-o");
@@ -295,7 +306,7 @@ int main(int argc,char**argv){
             else if(a=="--run") run=true;
             else if(a=="-o" && i+1<argc) output=cleanPathArg(argv[++i]);
             else if(a=="--version"){
-                std::cout<<"Tekst 2.0.0 (LLVM backend)\n";
+                std::cout<<"Tekst 2.2.0 (LLVM backend)\n";
                 return 0;
             } else if(input.empty()) input=a;
             else throw std::runtime_error("unknown argument "+a);
