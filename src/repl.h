@@ -1,2 +1,2 @@
 #pragma once
-#include "parser.h"
+namespace tekst { int repl(); }

@@ -1,0 +1,9 @@
+import fs
+fs.write("stdlib_test.tmp", "Tekst")
+print(fs.exists("stdlib_test.tmp"))
+print(fs.is_file("stdlib_test.tmp"))
+print(fs.read("stdlib_test.tmp"))
+fs.append("stdlib_test.tmp", "!")
+print(fs.read("stdlib_test.tmp"))
+fs.remove("stdlib_test.tmp")
+print(fs.exists("stdlib_test.tmp"))

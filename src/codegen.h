@@ -11,8 +11,8 @@ class Codegen {
     std::unordered_map<std::string,FnInfo> functions;
     std::unordered_map<std::string,Class*> classes;
     std::unordered_map<std::string,std::string> importedNames;
-    std::unordered_map<std::string,bool> importedModules;
-    std::ostringstream ir, body, globals;
+    std::unordered_map<std::string,std::string> importedModules;
+    std::ostringstream ir, body, allocas, globals;
     int nextId=0, nextBlock=0;
     std::string currentFn, currentOwner;
     std::unordered_map<std::string,std::string> slots;

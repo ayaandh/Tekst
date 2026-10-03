@@ -1,0 +1,8 @@
+import socket
+server = socket.tcp()
+socket.bind(server, "127.0.0.1", 45678)
+socket.listen(server, 1)
+client = socket.accept(server)
+socket.send(client, "hello from tekst")
+socket.close(client)
+socket.close(server)

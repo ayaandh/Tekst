@@ -1,0 +1,6 @@
+import socket
+server = socket.udp()
+socket.bind(server, "127.0.0.1", 45679)
+packet = socket.recvfrom(server, 1024)
+socket.sendto(server, "pong", packet["host"], packet["port"])
+socket.close(server)

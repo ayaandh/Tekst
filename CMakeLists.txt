@@ -11,6 +11,15 @@ add_executable(
     src/lexer.cpp
     src/parser.cpp
     src/codegen.cpp
+    src/ast.cpp
+    src/builtins.cpp
+    src/class.cpp
+    src/environment.cpp
+    src/errors.cpp
+    src/file_io.cpp
+    src/function.cpp
+    src/repl.cpp
+    src/value.cpp
 )
 
 add_executable(tk tk/tk.cpp)

@@ -1,0 +1,22 @@
+import http
+import json
+
+http.get("/", fn(req) {
+    return "Hello from Tekst!"
+})
+
+http.get("/api/info", fn(req) {
+    return http.json({
+        "language": "Tekst",
+        "version": "2.3"
+    })
+})
+
+http.post("/api/users", fn(req) {
+    user = json.decode(req.body)
+    return http.json(user, 201)
+})
+
+http.static("/public")
+
+http.serve(8080)

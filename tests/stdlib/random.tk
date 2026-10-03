@@ -1,0 +1,7 @@
+import random
+random.seed(42)
+print(random.random())
+print(random.randint(7, 7))
+print(random.randrange(0, 10, 2))
+print(random.uniform(1, 2) >= 1)
+print(random.choice(["a", "b", "c"]))

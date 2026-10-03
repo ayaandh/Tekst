@@ -1,0 +1,25 @@
+fn add(a, b=2):
+    return a + b
+
+x = add(5)
+print(x)
+
+numbers = [1, 2, 3]
+numbers[1] = 9
+for n in numbers:
+    print(n)
+
+class Counter:
+    def __init__(self, start=0):
+        self.value = start
+
+    def increment(self, amount=1):
+        self.value += amount
+        return self.value
+
+counter = Counter(10)
+print(counter.increment())
+print(counter.increment(5))
+
+if x == 7 and numbers[1] == 9:
+    print("ok")

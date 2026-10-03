@@ -1,0 +1,6 @@
+import socket
+client = socket.tcp()
+socket.connect(client, "127.0.0.1", 45678)
+message = socket.recv(client, 1024)
+print(message)
+socket.close(client)
