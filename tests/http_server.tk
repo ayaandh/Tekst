@@ -1,2 +1,67 @@
 import http
-http.serve(8080, "Hello from Tekst HTTP server")
+
+http.get("/", fn(req) {
+    return "Hello from Tekst!"
+})
+
+http.get("/about", fn(req) {
+    return "This is the Tekst HTTP test server."
+})
+
+http.get("/hello", fn(req) {
+    return "Hello!"
+})
+
+http.get("/request", fn(req) {
+    return "Method: " + req.method + "\nPath: " + req.path + "\nIP: " + req.ip
+})
+
+http.get("/greet", fn(req) {
+    name = req.query["name"]
+    if name == null:
+        name = "World"
+    return "Hello, " + name + "!"
+})
+
+http.get("/api/info", fn(req) {
+    return http.json({"language": "Tekst", "version": "2.3", "type": "programming language"})
+})
+
+http.post("/api/echo", fn(req) {
+    return http.json({"received": req.body})
+})
+
+http.get("/created", fn(req) {
+    return http.response(201, "Created successfully")
+})
+
+http.get("/headers", fn(req) {
+    return http.response(200, "Custom headers work!", {"X-Tekst": "true", "X-Powered-By": "Tekst"})
+})
+
+http.get("/redirect", fn(req) {
+    return http.redirect("/")
+})
+
+http.get("/cookie", fn(req) {
+    return http.response(200, "Cookie test", {"Set-Cookie": "tekst_test=true"})
+})
+
+http.get("/read-cookie", fn(req) {
+    value = req.cookies["tekst_test"]
+    if value == null:
+        return "Cookie not found"
+    return "Cookie: " + value
+})
+
+http.static("/public", "tests/public")
+
+http.use(fn(req, next) {
+    print("[HTTP] " + req.method + " " + req.path)
+    return next(req)
+})
+
+print("Tekst HTTP Feature Test")
+print("http://localhost:8080")
+
+http.serve(8080)

@@ -1,0 +1,5 @@
+import json
+
+data = json.decode("{\"name\":\"Tekst\",\"items\":[1,2,3],\"ok\":true}")
+print(data["name"])
+print(json.encode(data))

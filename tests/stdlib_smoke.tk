@@ -1,0 +1,12 @@
+import json
+import process
+
+numbers = [3, 1, 2]
+print(sum(numbers))
+print(sorted(numbers))
+print(reversed(numbers))
+print(enumerate(numbers))
+print(json.stringify({"ok": True, "n": 3}))
+print(json.parse("{\"a\": 7}")["a"])
+result = process.run("printf tekst")
+print(result["stdout"])
