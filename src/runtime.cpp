@@ -351,43 +351,272 @@ static Value* std_os(const std::string& n,int argc,va_list& ap){
  fail("unknown os function: "+n);return rt_none();
 }
 
+struct HttpRoute { std::string method; std::string path; Value* handler=nullptr; };
+struct HttpStatic { std::string prefix; std::string directory; };
+struct HttpContext { Value* request=nullptr; size_t middleware=0; };
+static std::vector<HttpRoute> http_routes;
+static std::vector<Value*> http_middleware;
+static std::vector<HttpStatic> http_static;
+static thread_local std::vector<HttpContext> http_contexts;
+
+static std::string http_lower(std::string s){
+ std::transform(s.begin(),s.end(),s.begin(),[](unsigned char c){return (char)std::tolower(c);});
+ return s;
+}
+static std::string http_trim(const std::string& s){
+ size_t a=0,b=s.size();
+ while(a<b&&std::isspace((unsigned char)s[a]))++a;
+ while(b>a&&std::isspace((unsigned char)s[b-1]))--b;
+ return s.substr(a,b-a);
+}
+static std::string http_decode(const std::string& s){
+ std::string out;
+ for(size_t i=0;i<s.size();++i){
+  if(s[i]=='+' ){out+=' ';continue;}
+  if(s[i]=='%'&&i+2<s.size()){
+   auto hex=[](char c)->int{if(c>='0'&&c<='9')return c-'0';if(c>='a'&&c<='f')return c-'a'+10;if(c>='A'&&c<='F')return c-'A'+10;return -1;};
+   int a=hex(s[i+1]),b=hex(s[i+2]);
+   if(a>=0&&b>=0){out.push_back((char)(a*16+b));i+=2;continue;}
+  }
+  out+=s[i];
+ }
+ return out;
+}
+static Value* http_dict(){return rt_dict(0);}
+static void http_dict_set(Value* d,const std::string& k,const std::string& v){d->dict[k]=rt_str(v.c_str());}
+static Value* http_parse_pairs(const std::string& input){
+ auto d=http_dict();
+ size_t p=0;
+ while(p<=input.size()){
+  size_t e=input.find('&',p);if(e==std::string::npos)e=input.size();
+  auto part=input.substr(p,e-p);size_t eq=part.find('=');
+  std::string k=eq==std::string::npos?part:part.substr(0,eq);
+  std::string v=eq==std::string::npos?"":part.substr(eq+1);
+  if(!k.empty())http_dict_set(d,http_decode(k),http_decode(v));
+  if(e==input.size())break;p=e+1;
+ }
+ return d;
+}
+static std::string http_json_escape(const std::string& s){
+ std::string o="\"";
+ for(unsigned char c:s){
+  switch(c){case '\\':o+="\\\\";break;case '"':o+="\\\"";break;case '\n':o+="\\n";break;case '\r':o+="\\r";break;case '\t':o+="\\t";break;default:if(c<32){char b[7];std::snprintf(b,sizeof(b),"\\u%04x",c);o+=b;}else o+=(char)c;}
+ }
+ o+='"';return o;
+}
+static std::string http_json(Value* v){
+ if(!v)return "null";
+ switch(v->kind){
+  case Kind::None:return "null";
+  case Kind::Int:return std::to_string(v->i);
+  case Kind::Float:{std::ostringstream o;o<<v->f;return o.str();}
+  case Kind::Bool:return v->b?"true":"false";
+  case Kind::String:return http_json_escape(v->s);
+  case Kind::List:{std::string o="[";for(size_t i=0;i<v->list.size();++i){if(i)o+=',';o+=http_json(v->list[i]);}return o+"]";}
+  case Kind::Dict:{std::string o="{";size_t i=0;for(auto&[k,x]:v->dict){if(i++)o+=',';o+=http_json_escape(k);o+=':';o+=http_json(x);}return o+"}";}
+  default:return http_json_escape(text(v));
+ }
+}
+
+class JsonParser {
+    const std::string& s;
+    size_t p=0;
+    void ws(){while(p<s.size()&&std::isspace((unsigned char)s[p]))++p;}
+    void error(const std::string& m){fail("json decode error: "+m);}
+    bool take(char c){ws();if(p<s.size()&&s[p]==c){++p;return true;}return false;}
+    Value* value(){
+        ws();
+        if(p>=s.size()) error("unexpected end of input");
+        char c=s[p];
+        if(c=='n'){if(s.compare(p,4,"null")==0){p+=4;return rt_none();}error("invalid value");}
+        if(c=='t'){if(s.compare(p,4,"true")==0){p+=4;return rt_bool(true);}error("invalid value");}
+        if(c=='f'){if(s.compare(p,5,"false")==0){p+=5;return rt_bool(false);}error("invalid value");}
+        if(c=='"') return stringValue();
+        if(c=='[') return arrayValue();
+        if(c=='{') return objectValue();
+        if(c=='-'||std::isdigit((unsigned char)c)) return numberValue();
+        error("unexpected character");
+        return rt_none();
+    }
+    Value* stringValue(){
+        if(p>=s.size()||s[p]!='"') error("expected string");
+        ++p;std::string out;
+        while(p<s.size()){
+            char c=s[p++];
+            if(c=='"') return rt_str(out.c_str());
+            if(c=='\\'){
+                if(p>=s.size()) error("unterminated escape");
+                char e=s[p++];
+                switch(e){
+                    case '"':out+='"';break;case '\\':out+='\\';break;case '/':out+='/';break;
+                    case 'b':out+='\b';break;case 'f':out+='\f';break;case 'n':out+='\n';break;case 'r':out+='\r';break;case 't':out+='\t';break;
+                    case 'u':{
+                        if(p+4>s.size()) error("invalid unicode escape");
+                        unsigned code=0;for(int i=0;i<4;i++){char h=s[p++];code<<=4;if(h>='0'&&h<='9')code+=h-'0';else if(h>='a'&&h<='f')code+=h-'a'+10;else if(h>='A'&&h<='F')code+=h-'A'+10;else error("invalid unicode escape");}
+                        if(code<=0x7f)out.push_back((char)code);else if(code<=0x7ff){out.push_back((char)(0xc0|(code>>6)));out.push_back((char)(0x80|(code&0x3f)));}else{out.push_back((char)(0xe0|(code>>12)));out.push_back((char)(0x80|((code>>6)&0x3f)));out.push_back((char)(0x80|(code&0x3f)));}
+                        break;
+                    }
+                    default:error("invalid escape");
+                }
+            } else out+=c;
+        }
+        error("unterminated string");return rt_none();
+    }
+    Value* numberValue(){
+        size_t start=p;
+        if(s[p]=='-')++p;
+        if(p>=s.size()||!std::isdigit((unsigned char)s[p])) error("invalid number");
+        if(s[p]=='0')++p;else while(p<s.size()&&std::isdigit((unsigned char)s[p]))++p;
+        bool floating=false;
+        if(p<s.size()&&s[p]=='.'){floating=true;++p;if(p>=s.size()||!std::isdigit((unsigned char)s[p]))error("invalid number");while(p<s.size()&&std::isdigit((unsigned char)s[p]))++p;}
+        if(p<s.size()&&(s[p]=='e'||s[p]=='E')){floating=true;++p;if(p<s.size()&&(s[p]=='+'||s[p]=='-'))++p;if(p>=s.size()||!std::isdigit((unsigned char)s[p]))error("invalid exponent");while(p<s.size()&&std::isdigit((unsigned char)s[p]))++p;}
+        auto raw=s.substr(start,p-start);try{return floating?rt_float(std::stod(raw)):rt_int(std::stoll(raw));}catch(...){error("number out of range");return rt_none();}
+    }
+    Value* arrayValue(){
+        ++p;auto out=rt_list_empty();ws();if(take(']'))return out;
+        while(true){rt_list_push(out,value());ws();if(take(']'))return out;if(!take(','))error("expected ',' or ']'");}
+    }
+    Value* objectValue(){
+        ++p;auto out=rt_dict(0);ws();if(take('}'))return out;
+        while(true){ws();auto key=stringValue();ws();if(!take(':'))error("expected ':'");out->dict[key->s]=value();ws();if(take('}'))return out;if(!take(','))error("expected ',' or '}'");}
+    }
+public:
+    explicit JsonParser(const std::string& x):s(x){}
+    Value* parse(){auto v=value();ws();if(p!=s.size())error("unexpected trailing data");return v;}
+};
+
+static Value* std_json(const std::string& n,int argc,va_list& ap){
+    auto arg=[&](){return va_arg(ap,Value*);};
+    if(n=="decode"||n=="parse"){
+        if(argc!=1)fail("json."+n+" expects one string");
+        auto x=arg();need(x,Kind::String,"json decode input");return JsonParser(x->s).parse();
+    }
+    if(n=="encode"||n=="stringify"){
+        if(argc!=1)fail("json."+n+" expects one value");
+        return rt_str(http_json(arg()).c_str());
+    }
+    if(n=="pretty"){
+        if(argc!=1)fail("json.pretty expects one value");
+        std::string raw=http_json(arg()),out;int depth=0;bool inString=false,escape=false;
+        for(char c:raw){
+            if(inString){out+=c;if(escape)escape=false;else if(c=='\\')escape=true;else if(c=='"')inString=false;continue;}
+            if(c=='"'){inString=true;out+=c;continue;}
+            if(c=='{'||c=='['){out+=c;++depth;out+='\n';for(int i=0;i<depth;i++)out+="  ";}
+            else if(c=='}'||c==']'){--depth;out+='\n';for(int i=0;i<depth;i++)out+="  ";out+=c;}
+            else if(c==','){out+=",\n";for(int i=0;i<depth;i++)out+="  ";}
+            else if(c==':'){out+=": ";}
+            else out+=c;
+        }
+        return rt_str(out.c_str());
+    }
+    fail("unknown json function: "+n);return rt_none();
+}
+
+static Value* http_response(int status,const std::string& body,const std::string& contentType="text/plain; charset=utf-8"){
+ auto r=rt_new_object("HttpResponse");r->fields["status"]=rt_int(status);r->fields["body"]=rt_str(body.c_str());auto h=http_dict();http_dict_set(h,"Content-Type",contentType);r->fields["headers"]=h;return r;
+}
+static bool http_is_response(Value* v){return v&&v->kind==Kind::Object&&v->cls=="HttpResponse";}
+static void http_add_header(Value* response,const std::string& k,const std::string& v){
+ auto it=response->fields.find("headers");if(it==response->fields.end()){response->fields["headers"]=http_dict();it=response->fields.find("headers");}
+it->second->dict[k]=rt_str(v.c_str());
+}
+static Value* http_request(const std::string& method,const std::string& target,const std::string& clientIp,const std::unordered_map<std::string,std::string>& headers,const std::string& body){
+ auto r=rt_new_object("HttpRequest");size_t q=target.find('?');std::string path=q==std::string::npos?target:target.substr(0,q);std::string query=q==std::string::npos?"":target.substr(q+1);
+ r->fields["method"]=rt_str(method.c_str());r->fields["path"]=rt_str(http_decode(path).c_str());r->fields["query"]=http_parse_pairs(query);r->fields["headers"]=http_dict();r->fields["body"]=rt_str(body.c_str());r->fields["ip"]=rt_str(clientIp.c_str());r->fields["cookies"]=http_dict();
+ for(auto&[k,v]:headers){r->fields["headers"]->dict[k]=rt_str(v.c_str());if(http_lower(k)=="cookie"){size_t p=0;while(p<v.size()){size_t e=v.find(';',p);if(e==std::string::npos)e=v.size();auto part=http_trim(v.substr(p,e-p));size_t eq=part.find('=');if(eq!=std::string::npos)http_dict_set(r->fields["cookies"],http_trim(part.substr(0,eq)),http_trim(part.substr(eq+1)));if(e==v.size())break;p=e+1;}}}
+ return r;
+}
+static Value* http_dispatch(Value* req,size_t start);
+static Value* http_next(Value* req){
+ if(http_contexts.empty())return http_dispatch(req,http_middleware.size());
+ return http_dispatch(req,http_contexts.back().middleware+1);
+}
+static Value* http_dispatch(Value* req,size_t start){
+ if(start<http_middleware.size()){
+  auto fn=http_middleware[start];http_contexts.push_back({req,start});auto next=rt_callable((void*)&http_next);Value* out=rt_call_callable(fn,2,req,next);http_contexts.pop_back();return out;
+ }
+ auto method=req->fields["method"]->s,path=req->fields["path"]->s;
+ for(auto& route:http_routes)if(route.method==method&&route.path==path)return rt_call_callable(route.handler,1,req);
+ for(auto& st:http_static){if(path.rfind(st.prefix,0)!=0)continue;std::string rel=path.substr(st.prefix.size());while(!rel.empty()&&rel.front()=='/')rel.erase(rel.begin());auto file=std::filesystem::path(st.directory)/rel;if(rel.empty())file/= "index.html";std::error_code ec;auto base=std::filesystem::weakly_canonical(st.directory,ec);auto target=std::filesystem::weakly_canonical(file,ec);if(ec||target.string().rfind(base.string(),0)!=0||!std::filesystem::is_regular_file(target,ec))continue;std::ifstream in(target,std::ios::binary);std::ostringstream buf;buf<<in.rdbuf();std::string ext=target.extension().string(),ct="application/octet-stream";if(ext==".html"||ext==".htm")ct="text/html; charset=utf-8";else if(ext==".css")ct="text/css; charset=utf-8";else if(ext==".js")ct="text/javascript; charset=utf-8";else if(ext==".json")ct="application/json";else if(ext==".txt")ct="text/plain; charset=utf-8";return http_response(200,buf.str(),ct);}
+ return http_response(404,"Not Found");
+}
+static std::string http_recv_request(
+#ifdef _WIN32
+ SOCKET client
+#else
+ int client
+#endif
+){
+ std::string data;char buffer[8192];size_t want=0;
+ for(int n=0;n<64;++n){
+#ifdef _WIN32
+  int got=recv(client,buffer,sizeof(buffer),0);
+#else
+  int got=(int)recv(client,buffer,sizeof(buffer),0);
+#endif
+  if(got<=0)break;data.append(buffer,buffer+got);auto sep=data.find("\r\n\r\n");if(sep!=std::string::npos){auto head=data.substr(0,sep);auto pos=head.find("\r\n\r\n");(void)pos;std::istringstream hs(head);std::string line;std::getline(hs,line);while(std::getline(hs,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();auto c=line.find(':');if(c!=std::string::npos&&http_lower(http_trim(line.substr(0,c)))=="content-length"){try{want=(size_t)std::stoull(http_trim(line.substr(c+1)));}catch(...){want=0;}}}size_t bodyStart=sep+4;if(data.size()-bodyStart>=want)break;}
+ }
+ return data;
+}
+static std::unordered_map<std::string,std::string> http_headers(const std::string& head){
+ std::unordered_map<std::string,std::string> h;std::istringstream in(head);std::string line;std::getline(in,line);while(std::getline(in,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();auto p=line.find(':');if(p!=std::string::npos)h[http_trim(line.substr(0,p))]=http_trim(line.substr(p+1));}return h;
+}
+static std::string http_reason(int status){switch(status){case 200:return "OK";case 201:return "Created";case 204:return "No Content";case 301:return "Moved Permanently";case 302:return "Found";case 400:return "Bad Request";case 401:return "Unauthorized";case 403:return "Forbidden";case 404:return "Not Found";case 500:return "Internal Server Error";default:return "OK";}}
+static std::string http_packet(Value* response){
+ if(!http_is_response(response))response=http_response(200,text(response));int status=200;if(auto it=response->fields.find("status");it!=response->fields.end()&&it->second->kind==Kind::Int)status=(int)it->second->i;std::string body=response->fields.count("body")?text(response->fields["body"]):"";std::string out="HTTP/1.1 "+std::to_string(status)+" "+http_reason(status)+"\r\n";auto hi=response->fields.find("headers");if(hi!=response->fields.end()&&hi->second->kind==Kind::Dict)for(auto&[k,v]:hi->second->dict)out+=k+": "+text(v)+"\r\n";out+="Content-Length: "+std::to_string(body.size())+"\r\nConnection: close\r\n\r\n"+body;return out;
+}
 static Value* std_http(const std::string& n,int argc,va_list& ap){
  auto arg=[&](){return va_arg(ap,Value*);};
- if(n!="serve"&&n!="server") fail("unknown http function: "+n);
- if(argc!=2) fail("http."+n+" expects port and response");
- auto port=arg();auto response=arg();need(port,Kind::Int,"http port");need(response,Kind::String,"http response");
- if(port->i<1||port->i>65535) fail("http port must be between 1 and 65535");
+ if(n=="get"||n=="post"||n=="put"||n=="delete"){
+  if(argc!=2)fail("http."+n+" expects path and handler");auto path=arg(),handler=arg();need(path,Kind::String,"http route path");if(!handler||handler->callable==nullptr)fail("http route handler must be callable");http_routes.push_back({n=="delete"?"DELETE":std::string(n.size(),(char)0),path->s,handler});http_routes.back().method=n=="get"?"GET":n=="post"?"POST":n=="put"?"PUT":"DELETE";return rt_none();
+ }
+ if(n=="use"){if(argc!=1)fail("http.use expects a handler");auto fn=arg();if(!fn||fn->callable==nullptr)fail("http middleware must be callable");http_middleware.push_back(fn);return rt_none();}
+ if(n=="static"){if(argc<1||argc>2)fail("http.static expects one or two arguments");auto prefix=arg();need(prefix,Kind::String,"http.static prefix");std::string dir=prefix->s;if(argc==2){auto d=arg();need(d,Kind::String,"http.static directory");dir=d->s;}else if(dir.empty()||dir[0]!='/'){}else dir="."+dir;http_static.push_back({prefix->s,dir});return rt_none();}
+ if(n=="json"){if(argc<1||argc>2)fail("http.json expects a value and optional status");auto value=arg();int status=200;if(argc==2){auto code=arg();need(code,Kind::Int,"http.json status");status=(int)code->i;}return http_response(status,http_json(value),"application/json; charset=utf-8");}
+ if(n=="response"){if(argc<2||argc>3)fail("http.response expects status, body, and optional headers");auto status=arg(),body=arg();need(status,Kind::Int,"http response status");need(body,Kind::String,"http response body");auto r=http_response((int)status->i,body->s);if(argc==3){auto h=arg();if(h->kind!=Kind::Dict)fail("http response headers expects a dictionary");for(auto&[k,v]:h->dict)http_add_header(r,k,text(v));}return r;}
+ if(n=="redirect"){if(argc!=1)fail("http.redirect expects a path");auto path=arg();need(path,Kind::String,"http redirect path");auto r=http_response(302,"");http_add_header(r,"Location",path->s);return r;}
+ if(n!="serve"&&n!="server")fail("unknown http function: "+n);
+ if(argc!=1&&argc!=2)fail("http."+n+" expects port and optional response");auto port=arg();need(port,Kind::Int,"http port");Value* legacy=argc==2?arg():nullptr;if(legacy)need(legacy,Kind::String,"http response");if(port->i<1||port->i>65535)fail("http port must be between 1 and 65535");
 #ifdef _WIN32
- WSADATA wsa{};if(WSAStartup(MAKEWORD(2,2),&wsa)!=0) fail("WSAStartup failed");
- SOCKET server=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(server==INVALID_SOCKET){WSACleanup();fail("could not create HTTP socket");}
+ WSADATA wsa{};if(WSAStartup(MAKEWORD(2,2),&wsa)!=0)fail("WSAStartup failed");SOCKET server=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);if(server==INVALID_SOCKET){WSACleanup();fail("could not create HTTP socket");}
 #else
- int server=socket(AF_INET,SOCK_STREAM,0);if(server<0) fail("could not create HTTP socket");
- int opt=1;setsockopt(server,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
+ int server=socket(AF_INET,SOCK_STREAM,0);if(server<0)fail("could not create HTTP socket");int opt=1;setsockopt(server,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
 #endif
  sockaddr_in addr{};addr.sin_family=AF_INET;addr.sin_addr.s_addr=htonl(INADDR_ANY);addr.sin_port=htons((uint16_t)port->i);
  if(bind(server,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0){
 #ifdef _WIN32
- closesocket(server);WSACleanup();
+  closesocket(server);WSACleanup();
 #else
- close(server);
+  close(server);
 #endif
- fail("could not bind HTTP port");}
- if(listen(server,16)<0){
+  fail("could not bind HTTP port");}
+ if(listen(server,32)<0){
 #ifdef _WIN32
- closesocket(server);WSACleanup();
+  closesocket(server);WSACleanup();
 #else
- close(server);
+  close(server);
 #endif
- fail("could not listen on HTTP port");}
- std::string body=response->s;
- std::string packet="HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: "+std::to_string(body.size())+"\r\nConnection: close\r\n\r\n"+body;
+  fail("could not listen on HTTP port");}
  for(;;){
 #ifdef _WIN32
-   SOCKET client=accept(server,nullptr,nullptr);if(client==INVALID_SOCKET) break;
-   char buffer[4096];recv(client,buffer,sizeof(buffer),0);send(client,packet.data(),(int)packet.size(),0);closesocket(client);
+  sockaddr_in peer{};int plen=sizeof(peer);SOCKET client=accept(server,(sockaddr*)&peer,&plen);if(client==INVALID_SOCKET)break;
 #else
-   int client=accept(server,nullptr,nullptr);if(client<0) break;
-   char buffer[4096];recv(client,buffer,sizeof(buffer),0);send(client,packet.data(),packet.size(),0);close(client);
+  sockaddr_in peer{};socklen_t plen=sizeof(peer);int client=accept(server,(sockaddr*)&peer,&plen);if(client<0)break;
+#endif
+  std::string raw=http_recv_request(client);auto sep=raw.find("\r\n\r\n");if(sep==std::string::npos){
+#ifdef _WIN32
+   closesocket(client);
+#else
+   close(client);
+#endif
+   continue;
+  }
+  std::string head=raw.substr(0,sep),body=raw.substr(sep+4);std::istringstream first(head);std::string method,target,version;first>>method>>target>>version;auto headers=http_headers(head);size_t len=0;auto it=headers.find("Content-Length");if(it!=headers.end())try{len=(size_t)std::stoull(it->second);}catch(...){len=0;}if(body.size()>len)body.resize(len);
+  char ipbuf[INET6_ADDRSTRLEN]{};inet_ntop(AF_INET,&peer.sin_addr,ipbuf,sizeof(ipbuf));auto req=http_request(method,target,ipbuf,headers,body);Value* response=legacy?http_response(200,legacy->s):http_dispatch(req,0);if(!response)response=http_response(500,"Internal Server Error");auto packet=http_packet(response);
+#ifdef _WIN32
+  send(client,packet.data(),(int)packet.size(),0);closesocket(client);
+#else
+  send(client,packet.data(),packet.size(),0);close(client);
 #endif
  }
 #ifdef _WIN32
@@ -406,6 +635,7 @@ extern "C" Value* rt_std_call(const char* module,const char* name,int argc,...){
  else if(m=="time")r=std_time(n,argc,ap);
  else if(m=="os")r=std_os(n,argc,ap);
  else if(m=="http")r=std_http(n,argc,ap);
+ else if(m=="json")r=std_json(n,argc,ap);
  else fail("unknown standard library module: "+m);
  va_end(ap);return r;
 }

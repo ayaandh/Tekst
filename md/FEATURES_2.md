@@ -66,3 +66,7 @@ Lists provide `push`, `pop`, `remove`, `contains`, and `length`. Strings provide
 ## Loop control
 
 `break` exits a loop and `continue` proceeds to the next iteration.
+
+## JSON
+
+The `json` standard module supports decoding JSON request bodies, encoding Tekst values, and pretty-printing JSON. HTTP JSON responses accept an optional status code.

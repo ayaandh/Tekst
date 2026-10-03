@@ -181,15 +181,41 @@ class Parser {
         return postfix();
     }
 
+    std::vector<S> braceBlock(){
+        take(TokenKind::LBrace);
+        while(is(TokenKind::Newline)) ++p;
+        bool indented=false;
+        if(is(TokenKind::Indent)){++p;indented=true;}
+        std::vector<S> b;
+        while(!is(TokenKind::RBrace)&&!is(TokenKind::Dedent)&&!is(TokenKind::End)){
+            if(is(TokenKind::Newline)){++p;continue;}
+            b.push_back(stmt());
+        }
+        if(indented&&is(TokenKind::Dedent)) ++p;
+        take(TokenKind::RBrace);
+        return b;
+    }
+
     E parseLambda(){
         ++p;
         std::vector<std::string> params;
-        if(is(TokenKind::Identifier)){
-            params.push_back(cur().text);++p;
-            while(is(TokenKind::Comma)){++p;if(!is(TokenKind::Identifier))err("expected lambda parameter");params.push_back(cur().text);++p;}
+        take(TokenKind::LParen);
+        if(!is(TokenKind::RParen)){
+            do{
+                if(!is(TokenKind::Identifier))err("expected lambda parameter");
+                params.push_back(cur().text);++p;
+                if(!is(TokenKind::Comma))break;
+                ++p;
+            }while(!is(TokenKind::RParen));
         }
-        take(TokenKind::Colon);
-        return std::make_unique<Lambda>(std::move(params),expr());
+        take(TokenKind::RParen);
+        if(is(TokenKind::Colon)){
+            ++p;
+            return std::make_unique<Lambda>(std::move(params),expr());
+        }
+        if(is(TokenKind::LBrace)) return std::make_unique<Lambda>(std::move(params),braceBlock());
+        err("expected ':' or '{' after lambda parameters");
+        return {};
     }
 
     E postfix(){
@@ -217,7 +243,7 @@ class Parser {
     }
 
     E primary(){
-        if(word("lambda")) return parseLambda();
+        if(word("lambda")||word("fn")) return parseLambda();
         if(is(TokenKind::Number)){auto x=std::make_unique<Number>(cur().text);++p;return x;}
         if(is(TokenKind::String)){auto x=std::make_unique<String>(cur().text);++p;return x;}
         if(word("True")||word("true")||word("False")||word("false")){bool b=word("True")||word("true");++p;return std::make_unique<Bool>(b);}
@@ -253,10 +279,18 @@ class Parser {
             take(TokenKind::RBracket);return x;
         }
         if(is(TokenKind::LBrace)){
-            ++p;auto x=std::make_unique<Dict>();
+            ++p;while(is(TokenKind::Newline))++p;bool indented=false;if(is(TokenKind::Indent)){++p;indented=true;}while(is(TokenKind::Newline))++p;auto x=std::make_unique<Dict>();
             if(!is(TokenKind::RBrace)){
-                do{auto k=expr();take(TokenKind::Colon);x->xs.emplace_back(std::move(k),expr());if(!is(TokenKind::Comma))break;++p;}while(!is(TokenKind::RBrace));
+                do{
+                    auto k=expr();take(TokenKind::Colon);
+                    while(is(TokenKind::Newline))++p;
+                    x->xs.emplace_back(std::move(k),expr());
+                    while(is(TokenKind::Newline))++p;
+                    if(!is(TokenKind::Comma))break;
+                    ++p;while(is(TokenKind::Newline))++p;
+                }while(!is(TokenKind::RBrace));
             }
+            if(indented&&is(TokenKind::Dedent))++p;
             take(TokenKind::RBrace);return x;
         }
         err("expected expression");return {};

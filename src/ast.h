@@ -4,6 +4,8 @@
 #include <vector>
 #include <utility>
 
+struct Stmt;
+using S=std::unique_ptr<Stmt>;
 struct Expr { virtual ~Expr()=default; };
 using E=std::unique_ptr<Expr>;
 
@@ -16,14 +18,14 @@ struct List:Expr{std::vector<E> xs;};
 struct Tuple:Expr{std::vector<E> xs;};
 struct Dict:Expr{std::vector<std::pair<E,E>> xs;};
 struct ListComp:Expr{E value;std::string var;E iterable;ListComp(E v,std::string n,E i):value(std::move(v)),var(std::move(n)),iterable(std::move(i)){}};
-struct Lambda:Expr{std::vector<std::string> params;E body;Lambda(std::vector<std::string> p,E b):params(std::move(p)),body(std::move(b)){}};
+struct Lambda:Expr{std::vector<std::string> params;E body;std::vector<S> blockBody;bool isBlock=false;Lambda(std::vector<std::string> p,E b):params(std::move(p)),body(std::move(b)){}Lambda(std::vector<std::string> p,std::vector<S> b):params(std::move(p)),blockBody(std::move(b)),isBlock(true){}};
 struct Unary:Expr{std::string op;E x;Unary(std::string o,E a):op(std::move(o)),x(std::move(a)){}};
 struct Binary:Expr{std::string op;E a,b;Binary(std::string o,E x,E y):op(std::move(o)),a(std::move(x)),b(std::move(y)){}};
 struct Call:Expr{E callee;std::vector<E> args;Call(E c,std::vector<E> a):callee(std::move(c)),args(std::move(a)){}};
 struct Index:Expr{E a,i;Index(E x,E y):a(std::move(x)),i(std::move(y)){}};
 struct Attr:Expr{E a;std::string n;bool optional=false;Attr(E x,std::string s,bool o=false):a(std::move(x)),n(std::move(s)),optional(o){}};
 
-struct Stmt{virtual~Stmt()=default;}; using S=std::unique_ptr<Stmt>;
+struct Stmt{virtual~Stmt()=default;};
 struct ExprStmt:Stmt{E e;explicit ExprStmt(E x):e(std::move(x)){}};
 struct Assign:Stmt{E target,value;std::string op;Assign(E t,E v,std::string o="="):target(std::move(t)),value(std::move(v)),op(std::move(o)){}};
 struct Print:Stmt{std::vector<E> args;explicit Print(std::vector<E> x):args(std::move(x)){}};

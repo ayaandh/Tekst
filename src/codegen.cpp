@@ -2,12 +2,23 @@
 #include "codegen.h"
 #include <stdexcept>
 #include <algorithm>
+#include <cctype>
 
 static std::string q(const std::string&s){
- std::string r;for(unsigned char c:s){if(c=='\\'||c=='"')r+='\\';if(c=='\n')r+="\\0A";else if(c=='\r')r+="\\0D";else if(c=='\t')r+="\\09";else if(c<32)r+='?';else r+=c;}return r;
+ std::ostringstream r;
+ for(unsigned char c:s){
+  if(c=='"') r<<"\\22";
+  else if(c=='\\') r<<"\\5C";
+  else if(c=='\n') r<<"\\0A";
+  else if(c=='\r') r<<"\\0D";
+  else if(c=='\t') r<<"\\09";
+  else if(c<32||c>126){r<<"\\"<<std::hex<<std::uppercase<<(int)c<<std::dec;}
+  else r<<(char)c;
+ }
+ return r.str();
 }
 std::string Codegen::escape(const std::string&s){return q(s);}
-static bool isStdModule(const std::string& m){return m=="math"||m=="random"||m=="fs"||m=="time"||m=="os"||m=="http";}
+static bool isStdModule(const std::string& m){return m=="math"||m=="random"||m=="fs"||m=="time"||m=="os"||m=="http"||m=="json";}
 
 void Codegen::ensureSlot(const std::string& n){
  if(slots.count(n)) return;
@@ -38,8 +49,17 @@ std::string Codegen::emitLambda(Lambda* l){
     for(size_t i=0;i<l->params.size();++i){if(i)lambdaFunctions<<", ";lambdaFunctions<<"ptr %a"<<i;}
     lambdaFunctions<<") {\nentry:\n";
     for(size_t i=0;i<l->params.size();++i){ensureSlot(l->params[i]);storeVar(l->params[i],"%a"+std::to_string(i));}
-    auto v=emitExpr(l->body.get());
-    lambdaFunctions<<allocas.str()<<body.str()<<"  ret ptr "<<v<<"\n}\n";
+    if(l->isBlock){
+        emitBlock(l->blockBody);
+        if(!terminated){
+            auto v=tmp();
+            body<<"  "<<v<<" = call ptr @rt_none()\n  ret ptr "<<v<<"\n";
+        }
+    } else {
+        auto v=emitExpr(l->body.get());
+        body<<"  ret ptr "<<v<<"\n";
+    }
+    lambdaFunctions<<allocas.str()<<body.str()<<"}\n";
     body.str(oldBody);body.clear();body.seekp(0,std::ios::end);
     slots=std::move(oldSlots);types=std::move(oldTypes);defers=std::move(oldDefers);
     currentFn=oldFn;currentOwner=oldOwner;nextId=oldId;nextBlock=oldBlock;terminated=oldTerm;
@@ -51,6 +71,11 @@ std::string Codegen::emitExpr(Expr*e){
  if(auto s=dynamic_cast<String*>(e)){
    static int sid=0;
    auto makeStr=[&](const std::string& val){std::string g="@.s"+std::to_string(sid++);globals<<g<<" = private unnamed_addr constant ["<<val.size()+1<<" x i8] c\""<<q(val)<<"\\00\"\n";auto p=tmp();body<<"  "<<p<<" = getelementptr inbounds ["<<val.size()+1<<" x i8], ptr "<<g<<", i64 0, i64 0\n";auto r=tmp();body<<"  "<<r<<" = call ptr @rt_str(ptr "<<p<<")\n";return r;};
+   size_t scan=0;
+   while(true){
+     size_t b=s->v.find('{',scan);if(b==std::string::npos)break;size_t epos=s->v.find('}',b+1);if(epos==std::string::npos)break;
+     std::string n=s->v.substr(b+1,epos-b-1);bool valid=!n.empty()&&(std::isalpha((unsigned char)n[0])||n[0]=='_');for(size_t ni=1;ni<n.size()&&valid;++ni)if(!(std::isalnum((unsigned char)n[ni])||n[ni]=='_'))valid=false;if(!valid)return makeStr(s->v);scan=epos+1;
+   }
    size_t pos=0;std::string result;bool interp=false;
    while(pos<s->v.size()){
      size_t b=s->v.find('{',pos);if(b==std::string::npos)break;size_t epos=s->v.find('}',b+1);if(epos==std::string::npos)break;
@@ -64,6 +89,8 @@ std::string Codegen::emitExpr(Expr*e){
  if(dynamic_cast<NoneExpr*>(e)){auto r=tmp();body<<"  "<<r<<" = call ptr @rt_none()\n";return r;}
  if(auto n=dynamic_cast<Name*>(e)){
    if(n->v=="True"||n->v=="False"){auto r=tmp();body<<"  "<<r<<" = call ptr @rt_bool(i1 "<<(n->v=="True"?"true":"false")<<")\n";return r;}
+   auto fi=functions.find(n->v);
+   if(fi!=functions.end()){auto r=tmp();body<<"  "<<r<<" = call ptr @rt_callable(ptr @"<<fi->second.symbol<<")\n";return r;}
    return loadVar(n->v);
  }
  if(auto l=dynamic_cast<List*>(e)){std::vector<std::string>v;for(auto&x:l->xs)v.push_back(emitExpr(x.get()));auto r=tmp();body<<"  "<<r<<" = call ptr (i32, ...) @rt_list(i32 "<<v.size();for(auto&x:v)body<<", ptr "<<x;body<<")\n";return r;} if(auto t=dynamic_cast<Tuple*>(e)){std::vector<std::string>v;for(auto&x:t->xs)v.push_back(emitExpr(x.get()));auto r=tmp();body<<"  "<<r<<" = call ptr (i32, ...) @rt_list(i32 "<<v.size();for(auto&x:v)body<<", ptr "<<x;body<<")\n";return r;}

@@ -1,13 +1,14 @@
 #include "ast.h"
 #include <cstddef>
 namespace {
+std::size_t countStmt(const Stmt* s);
 std::size_t countExpr(const Expr* e){
  if(!e)return 0;
  if(auto x=dynamic_cast<const List*>(e)){std::size_t n=1;for(auto&v:x->xs)n+=countExpr(v.get());return n;}
  if(auto x=dynamic_cast<const Tuple*>(e)){std::size_t n=1;for(auto&v:x->xs)n+=countExpr(v.get());return n;}
  if(auto x=dynamic_cast<const Dict*>(e)){std::size_t n=1;for(auto&v:x->xs)n+=countExpr(v.first.get())+countExpr(v.second.get());return n;}
  if(auto x=dynamic_cast<const ListComp*>(e))return 1+countExpr(x->value.get())+countExpr(x->iterable.get());
- if(auto x=dynamic_cast<const Lambda*>(e))return 1+countExpr(x->body.get());
+ if(auto x=dynamic_cast<const Lambda*>(e)){std::size_t n=1+countExpr(x->body.get());for(auto&v:x->blockBody)n+=countStmt(v.get());return n;}
  if(auto x=dynamic_cast<const Unary*>(e))return 1+countExpr(x->x.get());
  if(auto x=dynamic_cast<const Binary*>(e))return 1+countExpr(x->a.get())+countExpr(x->b.get());
  if(auto x=dynamic_cast<const Call*>(e)){std::size_t n=1+countExpr(x->callee.get());for(auto&v:x->args)n+=countExpr(v.get());return n;}
