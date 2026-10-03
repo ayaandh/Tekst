@@ -19,8 +19,11 @@ class Codegen {
     std::unordered_map<std::string,std::string> types;
     std::vector<std::string> breakTargets, continueTargets;
     std::vector<Expr*> defers;
-    std::ostringstream lambdaFunctions;
-    int lambdaId=0;
+    std::ostringstream lambdaFunctions, tryFunctions;
+    int lambdaId=0, tryId=0;
+    bool tryMode=false, tryCallback=false;
+    std::string tryContext;
+    std::unordered_map<std::string,int> trySlots;
     bool terminated=false;
     int controlKind=0;
     std::string tmp(){return "%v"+std::to_string(++nextId);}
@@ -33,6 +36,7 @@ class Codegen {
     void storeVar(const std::string&,const std::string&,const std::string& type="");
     void ensureSlot(const std::string&);
     void emitFunction(Function*);
+    void emitTry(Try*);
     std::string escape(const std::string&);
 public:
     std::string generate(const Program&);

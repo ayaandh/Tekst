@@ -1,5 +1,5 @@
 #define MyAppName "Tekst"
-#define MyAppVersion "2.1.4"
+#define MyAppVersion "2.1.5bv1.0"
 #define MyAppPublisher "Tekst"
 #define MyAppExeName "tekst.exe"
 

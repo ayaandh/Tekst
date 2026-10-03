@@ -17,5 +17,5 @@ Value* rt_list(int,...); Value* rt_dict(int,...); Value* rt_range(int,...);
 Value* rt_new_object(const char*); Value* rt_get_attr(Value*,const char*); void rt_set_attr(Value*,const char*,Value*);
 Value* rt_call_method(Value*,const char*,...); Value* rt_format(Value*,int,...);
 Value* rt_std_call(const char*,const char*,int,...); Value* rt_std_get(const char*,const char*);
-int rt_try_begin(); void rt_try_end(); void rt_throw(Value*); Value* rt_last_error();
+int rt_try_begin(); void rt_try_end(); void rt_throw(Value*); Value* rt_last_error(); void* rt_try_frame_create(int); void rt_try_frame_set(void*,int,void*); void* rt_try_slot(void*,int); Value* rt_try_error(void*); int rt_try_execute(void(*)(void*),void(*)(void*),void*); void rt_try_frame_destroy(void*);
 }

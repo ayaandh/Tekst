@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 static std::string q(const std::string&s){
  std::ostringstream r;
@@ -22,6 +23,10 @@ static bool isStdModule(const std::string& m){return m=="math"||m=="random"||m==
 
 void Codegen::ensureSlot(const std::string& n){
  if(slots.count(n)) return;
+ if(tryMode){
+   if(!trySlots.count(n)) throw std::runtime_error("internal try/catch variable slot missing: "+n);
+   auto r=tmp();body<<"  "<<r<<" = call ptr @rt_try_slot(ptr "<<tryContext<<", i32 "<<trySlots[n]<<")\n";slots[n]=r;return;
+ }
  std::string s="%slot_"+n;
  allocas<<"  "<<s<<" = alloca ptr\n";
  auto z=tmp(); body<<"  "<<z<<" = call ptr @rt_none()\n"; body<<"  store ptr "<<z<<", ptr "<<s<<"\n";
@@ -213,6 +218,136 @@ std::string Codegen::emitExpr(Expr*e){
  throw std::runtime_error("unsupported expression");
 }
 
+
+static void collectTryNamesExpr(Expr*e,std::set<std::string>&out){
+ if(!e)return;
+ if(auto x=dynamic_cast<Name*>(e)){out.insert(x->v);return;}
+ if(auto x=dynamic_cast<List*>(e)){for(auto&v:x->xs)collectTryNamesExpr(v.get(),out);return;}
+ if(auto x=dynamic_cast<Tuple*>(e)){for(auto&v:x->xs)collectTryNamesExpr(v.get(),out);return;}
+ if(auto x=dynamic_cast<Dict*>(e)){for(auto&v:x->xs){collectTryNamesExpr(v.first.get(),out);collectTryNamesExpr(v.second.get(),out);}return;}
+ if(auto x=dynamic_cast<ListComp*>(e)){collectTryNamesExpr(x->value.get(),out);collectTryNamesExpr(x->iterable.get(),out);out.insert(x->var);return;}
+ if(auto x=dynamic_cast<Lambda*>(e)){collectTryNamesExpr(x->body.get(),out);for(auto&v:x->blockBody){}return;}
+ if(auto x=dynamic_cast<Unary*>(e)){collectTryNamesExpr(x->x.get(),out);return;}
+ if(auto x=dynamic_cast<Binary*>(e)){collectTryNamesExpr(x->a.get(),out);collectTryNamesExpr(x->b.get(),out);return;}
+ if(auto x=dynamic_cast<Call*>(e)){collectTryNamesExpr(x->callee.get(),out);for(auto&v:x->args)collectTryNamesExpr(v.get(),out);return;}
+ if(auto x=dynamic_cast<Index*>(e)){collectTryNamesExpr(x->a.get(),out);collectTryNamesExpr(x->i.get(),out);return;}
+ if(auto x=dynamic_cast<Attr*>(e)){collectTryNamesExpr(x->a.get(),out);return;}
+}
+static void collectTryNamesStmt(Stmt*s,std::set<std::string>&out){
+ if(!s)return;
+ if(auto x=dynamic_cast<Assign*>(s)){collectTryNamesExpr(x->target.get(),out);collectTryNamesExpr(x->value.get(),out);return;}
+ if(auto x=dynamic_cast<ExprStmt*>(s)){collectTryNamesExpr(x->e.get(),out);return;}
+ if(auto x=dynamic_cast<Print*>(s)){for(auto&v:x->args)collectTryNamesExpr(v.get(),out);return;}
+ if(auto x=dynamic_cast<Return*>(s)){collectTryNamesExpr(x->e.get(),out);return;}
+ if(auto x=dynamic_cast<Defer*>(s)){collectTryNamesExpr(x->e.get(),out);return;}
+ if(auto x=dynamic_cast<Throw*>(s)){collectTryNamesExpr(x->e.get(),out);return;}
+ if(auto x=dynamic_cast<If*>(s)){for(auto&b:x->branches){collectTryNamesExpr(b.first.get(),out);for(auto&v:b.second)collectTryNamesStmt(v.get(),out);}for(auto&v:x->els)collectTryNamesStmt(v.get(),out);return;}
+ if(auto x=dynamic_cast<While*>(s)){collectTryNamesExpr(x->cond.get(),out);for(auto&v:x->body)collectTryNamesStmt(v.get(),out);return;}
+ if(auto x=dynamic_cast<For*>(s)){out.insert(x->var);collectTryNamesExpr(x->iterable.get(),out);for(auto&v:x->body)collectTryNamesStmt(v.get(),out);return;}
+ if(auto x=dynamic_cast<Try*>(s)){for(auto&v:x->body)collectTryNamesStmt(v.get(),out);for(auto&v:x->handler)collectTryNamesStmt(v.get(),out);if(!x->error.empty())out.insert(x->error);return;}
+ if(auto x=dynamic_cast<Match*>(s)){collectTryNamesExpr(x->value.get(),out);for(auto&b:x->cases){collectTryNamesExpr(b.first.get(),out);for(auto&v:b.second)collectTryNamesStmt(v.get(),out);}for(auto&v:x->els)collectTryNamesStmt(v.get(),out);return;}
+}
+void Codegen::emitTry(Try*z){
+ std::set<std::string> names;
+ for(auto&x:slots)names.insert(x.first);
+ for(auto&x:z->body)collectTryNamesStmt(x.get(),names);
+ for(auto&x:z->handler)collectTryNamesStmt(x.get(),names);
+ if(!z->error.empty())names.insert(z->error);
+ for(auto&n:names)ensureSlot(n);
+ std::vector<std::string> ordered(names.begin(),names.end());
+ std::unordered_map<std::string,int> oldTrySlots=trySlots;
+ bool oldTryMode=tryMode;
+ bool oldTryCallback=tryCallback;
+ std::string oldTryContext=tryContext;
+ std::string oldBody=body.str();
+ std::string oldAllocas=allocas.str();
+ auto oldSlots=slots;
+ auto oldTypes=types;
+ auto oldDefers=defers;
+ auto oldBreak=breakTargets;
+ auto oldContinue=continueTargets;
+ bool oldTerm=terminated;
+ int oldNextId=nextId,oldNextBlock=nextBlock;
+ std::string oldFn=currentFn,oldOwner=currentOwner;
+ std::string bodyName="__try_body_"+std::to_string(++tryId);
+ std::string handlerName="__try_handler_"+std::to_string(tryId);
+ trySlots.clear();
+ for(size_t i=0;i<ordered.size();++i)trySlots[ordered[i]]=static_cast<int>(i);
+ tryMode=true;
+ tryCallback=true;
+ tryContext="%ctx";
+ slots.clear();
+ types.clear();
+ defers.clear();
+ breakTargets.clear();
+ continueTargets.clear();
+ terminated=false;
+ nextId=0;
+ nextBlock=0;
+ currentFn=bodyName;
+ currentOwner="";
+ allocas.str("");
+ allocas.clear();
+ body.str("");
+ body.clear();
+ body<<"define void @"<<bodyName<<"(ptr %ctx) {\nentry:\n";
+ emitBlock(z->body);
+ if(!terminated)body<<"  ret void\n";
+ std::string tryBodyIR=body.str();auto ep=tryBodyIR.find("entry:\n");if(ep!=std::string::npos)tryBodyIR.insert(ep+7,allocas.str());tryFunctions<<tryBodyIR<<"}\n";
+ body.str("");
+ body.clear();
+ allocas.str("");
+ allocas.clear();
+ slots.clear();
+ types.clear();
+ defers.clear();
+ breakTargets.clear();
+ continueTargets.clear();
+ terminated=false;
+ nextId=0;
+ nextBlock=0;
+ currentFn=handlerName;
+ currentOwner="";
+ body<<"define void @"<<handlerName<<"(ptr %ctx) {\nentry:\n";
+ tryMode=true;
+ tryCallback=true;
+ tryContext="%ctx";
+ if(!z->error.empty()){
+   auto ev=tmp();
+   body<<"  "<<ev<<" = call ptr @rt_try_error(ptr %ctx)\n";
+   storeVar(z->error,ev);
+ }
+ emitBlock(z->handler);
+ if(!terminated)body<<"  ret void\n";
+ std::string tryHandlerIR=body.str();auto hep=tryHandlerIR.find("entry:\n");if(hep!=std::string::npos)tryHandlerIR.insert(hep+7,allocas.str());tryFunctions<<tryHandlerIR<<"}\n";
+ std::ostringstream setup;
+ setup<<"  %tryctx"<<tryId<<" = call ptr @rt_try_frame_create(i32 "<<ordered.size()<<")\n";
+ for(size_t i=0;i<ordered.size();++i)setup<<"  call void @rt_try_frame_set(ptr %tryctx"<<tryId<<", i32 "<<i<<", ptr "<<oldSlots[ordered[i]]<<")\n";
+ setup<<"  call i32 @rt_try_execute(ptr @"<<bodyName<<", ptr @"<<handlerName<<", ptr %tryctx"<<tryId<<")\n";
+ setup<<"  call void @rt_try_frame_destroy(ptr %tryctx"<<tryId<<")\n";
+ body.str(oldBody);
+ body.clear();
+ body.seekp(0,std::ios::end);
+ body<<setup.str();
+ allocas.str(oldAllocas);
+ allocas.clear();
+ allocas.seekp(0,std::ios::end);
+ slots=oldSlots;
+ types=oldTypes;
+ defers=oldDefers;
+ breakTargets=oldBreak;
+ continueTargets=oldContinue;
+ terminated=oldTerm;
+ nextId=oldNextId;
+ nextBlock=oldNextBlock;
+ currentFn=oldFn;
+ currentOwner=oldOwner;
+ trySlots=oldTrySlots;
+ tryMode=oldTryMode;
+ tryCallback=oldTryCallback;
+ tryContext=oldTryContext;
+}
+
 void Codegen::emitStmt(Stmt*s){
  if(dynamic_cast<Import*>(s) || dynamic_cast<FromImport*>(s)) return;
  if(auto p=dynamic_cast<Print*>(s)){std::vector<std::string> args;for(auto&arg:p->args)args.push_back(emitExpr(arg.get()));body<<"  call void (i32, ...) @rt_print_many(i32 "<<args.size();for(auto&x:args)body<<", ptr "<<x;body<<")\n";return;}
@@ -271,7 +406,8 @@ void Codegen::emitStmt(Stmt*s){
  }
  if(auto w=dynamic_cast<While*>(s)){auto head=label("while"),done=label("wend"),inside=label("wbody");body<<"  br label %"<<head<<"\n"<<head<<":\n";auto c=emitExpr(w->cond.get());auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<c<<")\n  br i1 "<<tr<<", label %"<<inside<<", label %"<<done<<"\n"<<inside<<":\n";breakTargets.push_back(done);continueTargets.push_back(head);terminated=false;emitBlock(w->body);breakTargets.pop_back();continueTargets.pop_back();if(!terminated)body<<"  br label %"<<head<<"\n";terminated=false;body<<done<<":\n";return;}
  if(auto f=dynamic_cast<For*>(s)){auto it=emitExpr(f->iterable.get());std::string idxslot="%foridx"+std::to_string(++nextId);allocas<<"  "<<idxslot<<" = alloca ptr\n";auto zero=tmp();body<<"  "<<zero<<" = call ptr @rt_int(i64 0)\n  store ptr "<<zero<<", ptr "<<idxslot<<"\n";std::string head=label("for"),done=label("forend"),inside=label("forbody"),inc=label("forinc");body<<"  br label %"<<head<<"\n"<<head<<":\n";auto idx=tmp();body<<"  "<<idx<<" = load ptr, ptr "<<idxslot<<"\n";auto n=tmp();body<<"  "<<n<<" = call ptr @rt_len(ptr "<<it<<")\n";auto cond=tmp();body<<"  "<<cond<<" = call ptr @rt_lt(ptr "<<idx<<", ptr "<<n<<")\n";auto tr=tmp();body<<"  "<<tr<<" = call i1 @rt_truth(ptr "<<cond<<")\n  br i1 "<<tr<<", label %"<<inside<<", label %"<<done<<"\n"<<inside<<":\n";auto v=tmp();body<<"  "<<v<<" = call ptr @rt_index(ptr "<<it<<", ptr "<<idx<<")\n";storeVar(f->var,v);breakTargets.push_back(done);continueTargets.push_back(inc);terminated=false;emitBlock(f->body);breakTargets.pop_back();continueTargets.pop_back();if(terminated&&controlKind==1){terminated=false;body<<done<<":\n";return;}if(!terminated)body<<"  br label %"<<inc<<"\n";terminated=false;body<<inc<<":\n";auto one=tmp();body<<"  "<<one<<" = call ptr @rt_int(i64 1)\n";auto ni=tmp();body<<"  "<<ni<<" = call ptr @rt_add(ptr "<<idx<<", ptr "<<one<<")\n  store ptr "<<ni<<", ptr "<<idxslot<<"\n";body<<"  br label %"<<head<<"\n"<<done<<":\n";return;}
- if(dynamic_cast<Try*>(s)){throw std::runtime_error("try/catch lowering is not yet enabled in the LLVM backend");}
+ if(auto z=dynamic_cast<Try*>(s)){emitTry(z);return;}
+ if(auto th=dynamic_cast<Throw*>(s)){auto v=emitExpr(th->e.get());body<<"  call void @rt_throw(ptr "<<v<<")\n";if(tryCallback)body<<"  ret void\n";else{auto r=tmp();body<<"  "<<r<<" = call ptr @rt_none()\n  ret ptr "<<r<<"\n";}terminated=true;return;}
  if(auto fn=dynamic_cast<Function*>(s)){return;} if(auto c=dynamic_cast<Class*>(s)){return;}
  throw std::runtime_error("unsupported statement");
 }
@@ -292,7 +428,7 @@ void Codegen::emitFunction(Function*f){
 }
 std::string Codegen::generate(const Program&p){
  ir<<"; Tekst LLVM IR\nsource_filename = \"Tekst\"\n\n";
- ir<<"declare ptr @rt_none()\ndeclare ptr @rt_int(i64)\ndeclare ptr @rt_float(double)\ndeclare ptr @rt_str(ptr)\ndeclare ptr @rt_str_const_empty()\ndeclare ptr @rt_bool(i1)\ndeclare ptr @rt_callable(ptr)\ndeclare ptr @rt_call_callable(ptr,i32,...)\ndeclare ptr @rt_list_empty()\ndeclare void @rt_list_push(ptr,ptr)\ndeclare ptr @rt_optional_attr(ptr,ptr)\ndeclare ptr @rt_add(ptr,ptr)\ndeclare ptr @rt_sub(ptr,ptr)\ndeclare ptr @rt_mul(ptr,ptr)\ndeclare ptr @rt_div(ptr,ptr)\ndeclare ptr @rt_mod(ptr,ptr)\ndeclare ptr @rt_eq(ptr,ptr)\ndeclare ptr @rt_ne(ptr,ptr)\ndeclare ptr @rt_lt(ptr,ptr)\ndeclare ptr @rt_le(ptr,ptr)\ndeclare ptr @rt_gt(ptr,ptr)\ndeclare ptr @rt_ge(ptr,ptr)\ndeclare ptr @rt_neg(ptr)\ndeclare ptr @rt_not(ptr)\ndeclare ptr @rt_ref(ptr)\ndeclare ptr @rt_deref(ptr)\ndeclare void @rt_store(ptr,ptr)\ndeclare ptr @rt_alloc(ptr)\ndeclare void @rt_free(ptr)\ndeclare ptr @rt_ptr_add(ptr,ptr)\ndeclare ptr @rt_ptr_load_int(ptr)\ndeclare void @rt_ptr_store_int(ptr,ptr)\ndeclare ptr @rt_ptr_load_byte(ptr)\ndeclare void @rt_ptr_store_byte(ptr,ptr)\ndeclare ptr @rt_and(ptr,ptr)\ndeclare ptr @rt_or(ptr,ptr)\ndeclare i1 @rt_truth(ptr)\ndeclare void @rt_print(ptr)\ndeclare void @rt_print_many(i32,...)\ndeclare ptr @rt_input(ptr)\ndeclare ptr @rt_to_int(ptr)\ndeclare ptr @rt_to_str(ptr)\ndeclare ptr @rt_to_bool(ptr)\ndeclare ptr @rt_to_float(ptr)\ndeclare ptr @rt_len(ptr)\ndeclare ptr @rt_index(ptr,ptr)\ndeclare void @rt_set_index(ptr,ptr,ptr)\ndeclare ptr @rt_list(i32,...)\ndeclare ptr @rt_dict(i32,...)\ndeclare ptr @rt_range(i32,...)\ndeclare ptr @rt_new_object(ptr)\ndeclare ptr @rt_get_attr(ptr,ptr)\ndeclare void @rt_set_attr(ptr,ptr,ptr)\ndeclare ptr @rt_call_method(ptr,ptr,...)\ndeclare ptr @rt_format(ptr,i32,...)\ndeclare ptr @rt_std_call(ptr,ptr,i32,...)\ndeclare ptr @rt_std_get(ptr,ptr)\ndeclare i32 @rt_try_begin()\ndeclare void @rt_try_end()\ndeclare void @rt_throw(ptr)\ndeclare ptr @rt_last_error()\n\n";
+ ir<<"declare ptr @rt_none()\ndeclare ptr @rt_int(i64)\ndeclare ptr @rt_float(double)\ndeclare ptr @rt_str(ptr)\ndeclare ptr @rt_str_const_empty()\ndeclare ptr @rt_bool(i1)\ndeclare ptr @rt_callable(ptr)\ndeclare ptr @rt_call_callable(ptr,i32,...)\ndeclare ptr @rt_list_empty()\ndeclare void @rt_list_push(ptr,ptr)\ndeclare ptr @rt_optional_attr(ptr,ptr)\ndeclare ptr @rt_add(ptr,ptr)\ndeclare ptr @rt_sub(ptr,ptr)\ndeclare ptr @rt_mul(ptr,ptr)\ndeclare ptr @rt_div(ptr,ptr)\ndeclare ptr @rt_mod(ptr,ptr)\ndeclare ptr @rt_eq(ptr,ptr)\ndeclare ptr @rt_ne(ptr,ptr)\ndeclare ptr @rt_lt(ptr,ptr)\ndeclare ptr @rt_le(ptr,ptr)\ndeclare ptr @rt_gt(ptr,ptr)\ndeclare ptr @rt_ge(ptr,ptr)\ndeclare ptr @rt_neg(ptr)\ndeclare ptr @rt_not(ptr)\ndeclare ptr @rt_ref(ptr)\ndeclare ptr @rt_deref(ptr)\ndeclare void @rt_store(ptr,ptr)\ndeclare ptr @rt_alloc(ptr)\ndeclare void @rt_free(ptr)\ndeclare ptr @rt_ptr_add(ptr,ptr)\ndeclare ptr @rt_ptr_load_int(ptr)\ndeclare void @rt_ptr_store_int(ptr,ptr)\ndeclare ptr @rt_ptr_load_byte(ptr)\ndeclare void @rt_ptr_store_byte(ptr,ptr)\ndeclare ptr @rt_and(ptr,ptr)\ndeclare ptr @rt_or(ptr,ptr)\ndeclare i1 @rt_truth(ptr)\ndeclare void @rt_print(ptr)\ndeclare void @rt_print_many(i32,...)\ndeclare ptr @rt_input(ptr)\ndeclare ptr @rt_to_int(ptr)\ndeclare ptr @rt_to_str(ptr)\ndeclare ptr @rt_to_bool(ptr)\ndeclare ptr @rt_to_float(ptr)\ndeclare ptr @rt_len(ptr)\ndeclare ptr @rt_index(ptr,ptr)\ndeclare void @rt_set_index(ptr,ptr,ptr)\ndeclare ptr @rt_list(i32,...)\ndeclare ptr @rt_dict(i32,...)\ndeclare ptr @rt_range(i32,...)\ndeclare ptr @rt_new_object(ptr)\ndeclare ptr @rt_get_attr(ptr,ptr)\ndeclare void @rt_set_attr(ptr,ptr,ptr)\ndeclare ptr @rt_call_method(ptr,ptr,...)\ndeclare ptr @rt_format(ptr,i32,...)\ndeclare ptr @rt_std_call(ptr,ptr,i32,...)\ndeclare ptr @rt_std_get(ptr,ptr)\ndeclare i32 @rt_try_begin()\ndeclare void @rt_try_end()\ndeclare void @rt_throw(ptr)\ndeclare ptr @rt_last_error()\ndeclare ptr @rt_try_frame_create(i32)\ndeclare void @rt_try_frame_set(ptr,i32,ptr)\ndeclare ptr @rt_try_slot(ptr,i32)\ndeclare ptr @rt_try_error(ptr)\ndeclare i32 @rt_try_execute(ptr,ptr,ptr)\ndeclare void @rt_try_frame_destroy(ptr)\n\n";
  for(auto&s:p.body){
    if(auto im=dynamic_cast<Import*>(s.get())) importedModules[im->alias.empty()?im->module:im->alias]=im->module;
    if(auto fi=dynamic_cast<FromImport*>(s.get())) importedNames[fi->alias.empty()?fi->name:fi->alias]=isStdModule(fi->module)?fi->module+"."+fi->name:fi->name;
@@ -308,5 +444,6 @@ std::string Codegen::generate(const Program&p){
  for(auto it=defers.rbegin();it!=defers.rend();++it)emitExpr(*it);
  ir<<globals.str();
  ir<<lambdaFunctions.str();
+ ir<<tryFunctions.str();
  ir<<"define i32 @main() {\nentry:\n"<<allocas.str()<<body.str()<<"  ret i32 0\n}\n";return ir.str();
 }

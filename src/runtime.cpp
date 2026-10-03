@@ -176,7 +176,7 @@ extern "C" Value* rt_call_method(Value*o,const char*n,...){
 }
 extern "C" Value* rt_format(Value*t,int n,...){std::string s=text(t),out;va_list ap;va_start(ap,n);size_t pos=0;for(int i=0;i<n;i++){size_t b=s.find('{',pos);size_t e=b==std::string::npos?std::string::npos:s.find('}',b);if(b==std::string::npos||e==std::string::npos)break;out+=s.substr(pos,b-pos);out+=text(va_arg(ap,Value*));pos=e+1;}out+=s.substr(pos);va_end(ap);return rt_str(out.c_str());}
 
-static thread_local jmp_buf* active=nullptr; static thread_local Value* last=nullptr;
+struct TryFrame { jmp_buf env; std::vector<Value**> slots; Value* error=nullptr; }; static thread_local jmp_buf* active=nullptr; static thread_local Value* last=nullptr;
 static void fail(const std::string&m){last=rt_str(m.c_str());if(active)longjmp(*active,1);std::cerr<<"Tekst runtime error: "<<m<<std::endl;std::exit(1);}
 static std::mt19937_64& std_rng(){
  static std::mt19937_64 g([]{
@@ -650,4 +650,12 @@ extern "C" Value* rt_std_get(const char* module,const char* name){
 }
 
 extern "C" int rt_try_begin(){static thread_local jmp_buf env;active=&env;return setjmp(env);}
-extern "C" void rt_try_end(){active=nullptr;} extern "C" void rt_throw(Value*v){last=v;if(active)longjmp(*active,1);fail(text(v));} extern "C" Value* rt_last_error(){return last?last:rt_none();}
+extern "C" void rt_try_end(){active=nullptr;}
+extern "C" void rt_throw(Value*v){last=v;if(active)longjmp(*active,1);fail(text(v));}
+extern "C" Value* rt_last_error(){return last?last:rt_none();}
+extern "C" void* rt_try_frame_create(int n){auto*f=new TryFrame();f->slots.resize(n,nullptr);return f;}
+extern "C" void rt_try_frame_set(void*ctx,int i,void*slot){auto*f=static_cast<TryFrame*>(ctx);if(i>=0&&static_cast<size_t>(i)<f->slots.size())f->slots[static_cast<size_t>(i)]=static_cast<Value**>(slot);}
+extern "C" void* rt_try_slot(void*ctx,int i){auto*f=static_cast<TryFrame*>(ctx);if(i<0||static_cast<size_t>(i)>=f->slots.size()||!f->slots[static_cast<size_t>(i)])return nullptr;return f->slots[static_cast<size_t>(i)];}
+extern "C" Value* rt_try_error(void*ctx){auto*f=static_cast<TryFrame*>(ctx);return f->error?f->error:rt_none();}
+extern "C" int rt_try_execute(void(*body)(void*),void(*handler)(void*),void*ctx){auto*f=static_cast<TryFrame*>(ctx);active=&f->env;int jumped=setjmp(f->env);if(jumped==0){body(ctx);active=nullptr;return 0;}active=nullptr;f->error=last;if(handler)handler(ctx);return 1;}
+extern "C" void rt_try_frame_destroy(void*ctx){delete static_cast<TryFrame*>(ctx);}
