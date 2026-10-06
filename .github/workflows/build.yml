@@ -34,20 +34,20 @@ jobs:
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          test -f build/tekst || {
+          test -f build/release/tekst || {
             echo "tekst executable not found"
             find build -maxdepth 3 -type f -print
             exit 1
           }
 
-          test -f build/tk || {
+          test -f build/release/tk || {
             echo "tk executable not found"
             find build -maxdepth 3 -type f -print
             exit 1
           }
 
-          chmod +x build/tekst
-          chmod +x build/tk
+          chmod +x build/release/tekst
+          chmod +x build/release/tk
 
       - name: Find Windows executables
         if: matrix.os == 'windows-latest'
@@ -74,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Tekst-linux
-          path: build/tekst
+          path: build/release/tekst
           if-no-files-found: error
 
       - name: Upload Linux TK
@@ -82,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TK-linux
-          path: build/tk
+          path: build/release/tk
           if-no-files-found: error
 
       - name: Upload macOS Tekst
@@ -90,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Tekst-macos
-          path: build/tekst
+          path: build/release/tekst
           if-no-files-found: error
 
       - name: Upload macOS TK
@@ -98,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TK-macos
-          path: build/tk
+          path: build/release/tk
           if-no-files-found: error
 
       - name: Upload Windows Tekst
