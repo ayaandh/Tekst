@@ -20,7 +20,7 @@ Then run your program again.
 
 Example:
 
-    import fs
+    use fs
 
     fs.write("Hello.txt", "hi")
     text = fs.read("Hello.txt")

@@ -1,4 +1,4 @@
-import fs
+use fs
 fs.write("stdlib_test.tmp", "Tekst")
 print(fs.exists("stdlib_test.tmp"))
 print(fs.is_file("stdlib_test.tmp"))

@@ -1,4 +1,4 @@
-import random
+use random
 random.seed(42)
 print(random.random())
 print(random.randint(7, 7))

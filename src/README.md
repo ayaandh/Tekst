@@ -112,10 +112,10 @@ Classes:
 
 ```tekst
 class Counter:
-    def __init__(self, start=0):
+    fn __init__(self, start=0):
         self.value = start
 
-    def increment(self, amount=1):
+    fn increment(self, amount=1):
         self.value += amount
         return self.value
 

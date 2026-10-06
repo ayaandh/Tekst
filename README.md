@@ -37,7 +37,7 @@ The native compiler currently supports:
 - `for ... in ...` loops
 - `range(...)`
 - List comprehensions
-- `fn` and `def` functions
+- `fn` functions (`def` is also accepted for older programs)
 - Default function arguments
 - Classes, inheritance with `extends`, constructors, methods, and `self`
 - Object fields and attribute access
@@ -162,10 +162,10 @@ welcome("Ayaan", "Hi")
 
 ```tk
 class Counter:
-    def __init__(self, start=0):
+    fn __init__(self, start=0):
         self.value = start
 
-    def increment(self, amount=1):
+    fn increment(self, amount=1):
         self.value += amount
         return self.value
 
@@ -238,11 +238,11 @@ See `POINTERS.md` and `README_LLVM.md` for more details.
 Tekst includes native standard-library modules. They are built into the runtime, so no `.tk` files are needed for them:
 
 ```tk
-import math
-import random
-import fs
-import time
-import os
+use math
+use random
+use fs
+use time
+use os
 
 print(math.sqrt(144))
 print(random.randint(1, 10))
@@ -260,13 +260,13 @@ Available modules:
 - `time`: `timestamp`, `now`, and `sleep`.
 - `os`: `cwd`, `chdir`, and `env`.
 
-Standard-library modules also support aliases and `from` imports:
+Standard-library modules also support aliases and `from ... use ...` imports:
 
 ```tk
-import math as m
+use math as m
 print(m.sqrt(81))
 
-from random import randint as r
+from random use randint as r
 print(r(1, 6))
 ```
 
@@ -277,7 +277,7 @@ Local Tekst modules and packages are resolved at compile time.
 For example:
 
 ```tk
-from mathpkg import square as sq
+from mathpkg use square as sq
 
 print(sq(9))
 ```

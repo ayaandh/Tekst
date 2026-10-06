@@ -1,4 +1,4 @@
-import time
+use time
 print(time.timestamp())
 print(time.now())
 time.sleep(0.01)

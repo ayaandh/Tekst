@@ -1,4 +1,4 @@
-import http
+use http
 
 http.get("/", fn(req) {
     return "Hello from Tekst!"

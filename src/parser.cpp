@@ -367,7 +367,7 @@ class Parser {
     }
 
     S stmt(){
-        if(word("import")){
+        if(word("use")||word("import")){
             ++p;if(!is(TokenKind::Identifier))err("expected module name");
             std::string m=cur().text;++p;
             while(is(TokenKind::Dot)){++p;if(!is(TokenKind::Identifier))err("expected module path component");m+="."+cur().text;++p;}
@@ -378,7 +378,7 @@ class Parser {
             ++p;if(!is(TokenKind::Identifier))err("expected module name");
             std::string m=cur().text;++p;
             while(is(TokenKind::Dot)){++p;if(!is(TokenKind::Identifier))err("expected module path component");m+="."+cur().text;++p;}
-            if(!word("import"))err("expected 'import'");++p;
+            if(!word("use")&&!word("import"))err("expected 'use'");++p;
             if(!is(TokenKind::Identifier))err("expected imported name");
             std::string n=cur().text;++p;std::string a;
             if(word("as")){++p;if(!is(TokenKind::Identifier))err("expected import alias");a=cur().text;++p;}

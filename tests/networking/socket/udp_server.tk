@@ -1,4 +1,4 @@
-import socket
+use socket
 server = socket.udp()
 socket.bind(server, "127.0.0.1", 45679)
 packet = socket.recvfrom(server, 1024)

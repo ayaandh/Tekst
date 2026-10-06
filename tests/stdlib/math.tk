@@ -1,4 +1,4 @@
-import math
+use math
 print(math.sqrt(81))
 print(math.cbrt(27))
 print(math.pow(2, 8))

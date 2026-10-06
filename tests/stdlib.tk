@@ -1,8 +1,8 @@
-import math
-import random
-import fs
-import time
-import os
+use math
+use random
+use fs
+use time
+use os
 
 print(math.sqrt(81))
 print(math.pi)

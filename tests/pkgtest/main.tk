@@ -1,2 +1,2 @@
-from mathpkg import square as sq
+from mathpkg use square as sq
 print(sq(9))

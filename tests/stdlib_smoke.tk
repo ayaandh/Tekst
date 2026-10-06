@@ -1,5 +1,5 @@
-import json
-import process
+use json
+use process
 
 numbers = [3, 1, 2]
 print(sum(numbers))

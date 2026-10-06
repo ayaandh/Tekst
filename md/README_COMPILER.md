@@ -67,7 +67,8 @@ tekst main.tekst --run
 - `while`
 - `for ... in ...`
 - `range(...)`
-- `fn` and `def`
+- `fn` (legacy `def` is also accepted)
+- `use` module imports and `from module use name` imports (`import` remains accepted for older programs)
 - default function arguments
 - classes, `extends`, `__init__`, methods and `self`
 - object fields

@@ -35,9 +35,9 @@ This is an explicit/manual memory layer. The high-level object/list/string runti
 
 ## Imports and local packages
 
-The LLVM compiler supports local Tekst modules and packages without changing the existing `import` syntax.
+The LLVM compiler supports local Tekst modules and packages. Use `use` for module imports; the older `import` spelling remains accepted.
 
-Resolution order for `import name` is:
+Resolution order for `use name` is:
 
 1. `%LOCALAPPDATA%/Tekst/packages/name`
 2. project `packages/name`
@@ -51,14 +51,14 @@ Package directories may contain multiple `.tk` files; `dec.tk` is loaded first, 
 Examples:
 
 ```tekst
-import mathpkg
+use mathpkg
 print(mathpkg.square(8))
 ```
 
 and:
 
 ```tekst
-from mathpkg import square as sq
+from mathpkg use square as sq
 print(sq(9))
 ```
 
